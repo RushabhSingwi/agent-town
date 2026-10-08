@@ -11,3 +11,11 @@ frontend/dist/
 *.tsbuildinfo
 
 .DS_Store
+
+# secrets: never commit these (real values live in Render's dashboard or ~/.modal.toml)
+.env.*
+!.env.example
+.modal.toml
+auth.json
+*.pem
+*.key
