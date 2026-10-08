@@ -143,9 +143,10 @@ def test_credential_shape_and_subscription_switch(monkeypatch, make_user):
     r = alice.post("/api/account/credentials", json={"provider": "anthropic", "secret": "sk-proj-nope-nope"})
     assert r.status_code == 422 and "sk-ant-api" in r.json()["detail"]
     sub = {"provider": "anthropic", "kind": "subscription", "secret": "sk-ant-oat01-" + "y" * 40}
+    from app.config import settings
+    monkeypatch.setattr(settings(), "allow_subscription_tokens", False)
     assert alice.post("/api/account/credentials", json=sub).status_code == 403
 
-    from app.config import settings
     monkeypatch.setattr(settings(), "allow_subscription_tokens", True)
     c = alice.post("/api/account/credentials", json=sub).json()
     assert c["status"] == "unverified" and c["hint"] == ""

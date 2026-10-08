@@ -158,5 +158,5 @@ def set_grants(agent_id: int, body: GrantsIn, user: User = Depends(require_user)
 
 @router.get("/{agent_id}/manifest")
 def manifest(agent_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    """Everything this agent gets when it runs: what a sandbox (Modal, later) will be handed."""
+    """Everything this agent gets when it runs: what its sandbox is handed."""
     return build_manifest(db, own_agent(db, user, agent_id))

@@ -125,7 +125,7 @@ export function NewToolModal({ onClose, onDone }: { onClose: () => void; onDone:
             <input value={auth} onChange={e => setAuth(e.target.value)} type="password" autoComplete="off" /></label>
         </> : <>
           <label>Command<input value={command} onChange={e => setCommand(e.target.value)} placeholder="npx -y @modelcontextprotocol/server-filesystem /data" required /></label>
-          <p className="hint">stdio servers start inside the agent's sandbox, so they show as “runs in sandbox” until a sandbox provider is wired up.</p>
+          <p className="hint">stdio servers start inside the agent's own sandbox each time it runs, so they show as “runs in sandbox”.</p>
         </>}
         <Err error={error} />
         <button className="primary" disabled={busy}>{busy ? 'Connecting…' : 'Connect'}</button>
