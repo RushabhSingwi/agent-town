@@ -12,6 +12,15 @@ export type AgentSummary = {
 export type Grant = { connection_id: number; tool_name: string | null }
 export type MyAgent = Omit<AgentSummary, 'files'> & {
   files: FileFull[]; grants: Grant[]; share_id: number | null; can_use_public: boolean
+  model_credential_id: number | null; model: string
+}
+
+export type ApiToken = { id: number; name: string; prefix: string; created_at: string; last_used_at: string | null; expires_at: string | null }
+export type Provider = 'anthropic' | 'openai'
+export type CredKind = 'api_key' | 'subscription'
+export type Credential = {
+  id: number; provider: Provider; kind: CredKind; label: string; hint: string; is_default: boolean
+  status: 'unverified' | 'valid' | 'invalid' | 'error'; status_detail: string; last_checked_at: string | null
 }
 
 export type Status = 'unknown' | 'connected' | 'auth_required' | 'error' | 'needs_sandbox'
@@ -62,7 +71,7 @@ export const api = {
 
   createAgent: (markdown: string, name: string | null, files: { path: string; content: string }[]) =>
     call<MyAgent>('POST', '/api/agents', { markdown, name: name || null, files }),
-  updateAgent: (id: number, patch: Partial<Pick<MyAgent, 'name' | 'description' | 'color' | 'can_use_public'>>) =>
+  updateAgent: (id: number, patch: Partial<Pick<MyAgent, 'name' | 'description' | 'color' | 'can_use_public' | 'model' | 'model_credential_id'>>) =>
     call<MyAgent>('PATCH', `/api/agents/${id}`, patch),
   deleteAgent: (id: number) => call('DELETE', `/api/agents/${id}`),
   putFile: (id: number, path: string, content: string) => call<MyAgent>('PUT', `/api/agents/${id}/files`, { path, content }),
@@ -83,4 +92,15 @@ export const api = {
     call<Share>('PATCH', `/api/public/${id}`, patch),
   unshare: (id: number) => call('DELETE', `/api/public/${id}`),
   getShare: (id: number) => call<Share>('GET', `/api/public/${id}`),
+
+  tokens: () => call<ApiToken[]>('GET', '/api/account/tokens'),
+  createToken: (name: string, expires_days: number | null) =>
+    call<ApiToken & { token: string }>('POST', '/api/account/tokens', { name, expires_days }),
+  revokeToken: (id: number) => call('DELETE', `/api/account/tokens/${id}`),
+  credentials: () => call<{ allow_subscription_tokens: boolean; credentials: Credential[] }>('GET', '/api/account/credentials'),
+  addCredential: (body: { provider: Provider; kind: CredKind; label?: string; secret: string }) =>
+    call<Credential>('POST', '/api/account/credentials', body),
+  checkCredential: (id: number) => call<Credential>('POST', `/api/account/credentials/${id}/check`),
+  setDefaultCredential: (id: number) => call<Credential>('PATCH', `/api/account/credentials/${id}`, { is_default: true }),
+  deleteCredential: (id: number) => call('DELETE', `/api/account/credentials/${id}`),
 }

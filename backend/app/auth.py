@@ -1,4 +1,11 @@
-"""Who is making this request? Session cookie -> user."""
+"""Who is making this request?
+
+Two ways in, both resolved to a user on the server; no endpoint ever takes a user id from the
+client:
+  - browsers: the session cookie set at login
+  - programs: "Authorization: Bearer at_…", an API token made in Account → API tokens
+Either way only a sha256 of the secret is stored, so a leaked database can't be replayed.
+"""
 
 from datetime import datetime, timedelta, timezone
 
@@ -8,10 +15,14 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import get_db
-from .models import AuthSession, User
-from .security import hash_token, new_session_token
+from .models import ApiToken, AuthSession, User
+from .security import API_TOKEN_PREFIX, hash_token, new_session_token
 
 COOKIE = "agenttown_session"
+
+
+def _utc(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)  # SQLite drops the timezone
 
 
 def start_session(db: Session, user: User, response: Response) -> None:
@@ -34,22 +45,52 @@ def end_session(db: Session, request: Request, response: Response) -> None:
     response.delete_cookie(COOKIE, path="/")
 
 
-def current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+def _from_bearer(db: Session, header: str) -> User:
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token.startswith(API_TOKEN_PREFIX):
+        raise HTTPException(401, "Use: Authorization: Bearer at_…", headers={"WWW-Authenticate": "Bearer"})
+    t = db.scalar(select(ApiToken).where(ApiToken.token_hash == hash_token(token.strip())))
+    now = datetime.now(timezone.utc)
+    if t is None or (t.expires_at and _utc(t.expires_at) < now):
+        # A bad token is an error, not "signed out": a script should fail loudly.
+        raise HTTPException(401, "Invalid or expired API token", headers={"WWW-Authenticate": "Bearer"})
+    t.last_used_at = now
+    db.commit()
+    return t.user
+
+
+def _from_cookie(db: Session, request: Request) -> User | None:
     token = request.cookies.get(COOKIE)
     if not token:
         return None
     s = db.scalar(select(AuthSession).where(AuthSession.token_hash == hash_token(token)))
     if s is None:
         return None
-    expires = s.expires_at if s.expires_at.tzinfo else s.expires_at.replace(tzinfo=timezone.utc)
-    if expires < datetime.now(timezone.utc):
+    if _utc(s.expires_at) < datetime.now(timezone.utc):
         db.delete(s)
         db.commit()
         return None
     return s.user
 
 
+def current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+    header = request.headers.get("authorization")
+    if header:
+        request.state.auth = "token"
+        return _from_bearer(db, header)
+    request.state.auth = "session"
+    return _from_cookie(db, request)
+
+
 def require_user(user: User | None = Depends(current_user)) -> User:
     if user is None:
         raise HTTPException(401, "Sign in first")
+    return user
+
+
+def require_session(request: Request, user: User = Depends(require_user)) -> User:
+    """For managing credentials themselves: a stolen API token must not be able to mint more
+    tokens or read which keys exist. Only a signed-in browser can."""
+    if getattr(request.state, "auth", None) != "session":
+        raise HTTPException(403, "Sign in with a browser session to manage tokens and keys")
     return user

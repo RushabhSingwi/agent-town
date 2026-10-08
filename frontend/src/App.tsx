@@ -4,6 +4,7 @@ import { AgentCard, LibraryCard, SharedAgentCard, StationCard } from './cards'
 import { layout, type Thing } from './city/layout'
 import { CityView } from './city/render'
 import { AuthModal, NewAgentModal, NewToolModal } from './modals'
+import { AccountModal } from './account'
 
 type Sel = { key: string; floor: string | null } | null
 
@@ -13,7 +14,7 @@ export default function App() {
   const cardRef = useRef<HTMLDivElement>(null)
   const [city, setCity] = useState<City | null>(null)
   const [sel, setSel] = useState<Sel>(null)
-  const [modal, setModal] = useState<'login' | 'signup' | 'agent' | 'tool' | null>(null)
+  const [modal, setModal] = useState<'login' | 'signup' | 'agent' | 'tool' | 'account' | null>(null)
   const [refit, setRefit] = useState(true)
 
   const reload = useCallback(async () => { setCity(await api.city()) }, [])
@@ -87,7 +88,7 @@ export default function App() {
         {me ? <>
           <button className="primary" onClick={() => setModal('agent')}>+ Agent</button>
           <button className="primary" onClick={() => setModal('tool')}>+ Tool</button>
-          <span className="who">@{me.username}</span>
+          <button className="who" onClick={() => setModal('account')} title="Models and API tokens">@{me.username}</button>
           <button onClick={async () => { await api.logout(); setSel(null); setRefit(true); reload() }}>Sign out</button>
         </> : <>
           <button onClick={() => setModal('login')}>Sign in</button>
@@ -108,6 +109,7 @@ export default function App() {
 
       {(modal === 'login' || modal === 'signup') && <AuthModal mode={modal} onClose={() => setModal(null)}
         onDone={() => { setModal(null); setRefit(true); reload() }} />}
+      {modal === 'account' && me && <AccountModal username={me.username} onClose={() => { setModal(null); reload() }} />}
       {modal === 'agent' && <NewAgentModal onClose={() => setModal(null)}
         onDone={async id => { setModal(null); setRefit(true); await reload(); setSel({ key: `agent:${id}`, floor: null }) }} />}
       {modal === 'tool' && <NewToolModal onClose={() => setModal(null)}

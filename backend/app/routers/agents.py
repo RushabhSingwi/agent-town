@@ -8,7 +8,7 @@ from .. import views
 from ..auth import current_user, require_user
 from ..db import get_db
 from ..manifest import build_manifest
-from ..models import DEFINITION, Agent, AgentFile, AgentToolGrant, McpConnection, PublicShare, User
+from ..models import DEFINITION, Agent, AgentFile, AgentToolGrant, McpConnection, ModelCredential, PublicShare, User
 from ..schemas import AgentIn, AgentPatch, FileIn, GrantsIn
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -91,7 +91,17 @@ def get_agent(agent_id: int, user: User | None = Depends(current_user), db: Sess
 @router.patch("/{agent_id}")
 def update_agent(agent_id: int, body: AgentPatch, user: User = Depends(require_user), db: Session = Depends(get_db)):
     a = own_agent(db, user, agent_id)
-    for field, value in body.model_dump(exclude_none=True).items():
+    changes = body.model_dump(exclude_none=True)
+    cred_id = changes.pop("model_credential_id", None)
+    if cred_id is not None:
+        if cred_id == 0:
+            a.model_credential_id = None
+        else:
+            c = db.get(ModelCredential, cred_id)
+            if c is None or c.owner_id != user.id:
+                raise HTTPException(404, "No such credential")
+            a.model_credential_id = c.id
+    for field, value in changes.items():
         setattr(a, field, value)
     db.commit()
     return owner_view(db, a)

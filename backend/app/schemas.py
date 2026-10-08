@@ -37,6 +37,8 @@ class AgentPatch(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     color: str | None = Color
     can_use_public: bool | None = None
+    model_credential_id: int | None = Field(default=None, description="0 = use your default")
+    model: str | None = Field(default=None, max_length=100)
 
 
 class GrantIn(BaseModel):
@@ -77,3 +79,20 @@ class SharePatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     note: str | None = Field(default=None, max_length=2000)
     allow_agent_use: bool | None = None
+
+
+class TokenIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    expires_days: int | None = Field(default=90, ge=1, le=3650, description="None = never expires")
+
+
+class CredentialIn(BaseModel):
+    provider: Literal["anthropic", "openai"]
+    kind: Literal["api_key", "subscription"] = "api_key"
+    label: str | None = Field(default=None, max_length=80)
+    secret: str = Field(min_length=8, max_length=20_000)
+
+
+class CredentialPatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=80)
+    is_default: bool | None = None

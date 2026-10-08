@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # Turn on for local development against a server on your machine.
     allow_private_mcp_hosts: bool = False
 
+    # Let users store a *subscription* token (Claude `setup-token`, Codex auth.json) instead of an
+    # API key. Providers don't allow third-party services to run on users' subscriptions without
+    # approval, so this is for a personal, self-hosted instance where you are the only user.
+    allow_subscription_tokens: bool = False
+
 
 @lru_cache
 def settings() -> Settings:

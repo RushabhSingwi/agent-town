@@ -13,6 +13,12 @@ A town of AI agents. Sign up, add your agents (markdown files, like Claude Code'
 - **Public district.** Share a whole agent or a single file (files go to the **Library**), with a
   note on what it's for. Everyone can browse it. Other people's agents can read it if the share
   allows agent use *and* their owner lets that agent read the public district.
+- **Your model, your bill.** Each user adds their own Anthropic or OpenAI API key (Account →
+  Models). It's encrypted, never shown again, and checked with the provider's free "list
+  models" call. Each agent runs on your default key or one you pick. Subscription tokens
+  (`claude setup-token`, Codex `auth.json`) are supported but **off by default**: providers don't
+  allow third-party services to run on people's subscriptions, so turn them on
+  (`AGENTTOWN_ALLOW_SUBSCRIPTION_TOKENS=true`) only on a personal, self-hosted instance.
 - **Manifest.** `GET /api/agents/{id}/manifest` is everything an agent is handed when it runs:
   instructions, files, granted tools, and the public items it may read. A sandbox provider
   (Modal, next) starts from exactly this. No credentials are in it.
@@ -36,8 +42,10 @@ npm run dev
 cd backend && uv run uvicorn dev.demo_mcp_server:app --port 8765
 ```
 
-Tests: `cd backend && uv run pytest`. They cover auth, privacy, sharing, grants, the
-manifest, the MCP handshake (JSON and SSE replies), credential prompts and the SSRF guard.
+Tests: `cd backend && uv run pytest`. They cover auth (sessions and API tokens: revoked,
+expired, can't escalate), one user being unable to reach another's town on any endpoint,
+model credentials (never returned, owner-only), sharing, grants, the manifest, the MCP
+handshake (JSON and SSE replies), credential prompts and the SSRF guard.
 
 Production is one process: `cd frontend && npm run build`, then the API serves
 `frontend/dist` itself. Use Postgres via `AGENTTOWN_DATABASE_URL`, a real
@@ -55,7 +63,9 @@ frontend/src
 backend/app
   models.py          the tables (diagram at the top of the file)
   auth.py            session cookie -> user
-  security.py        argon2 password hashes, session tokens, encryption of MCP credentials
+  security.py        argon2 password hashes, session/API tokens, encryption of MCP and model credentials
+  model_check.py     is a model key real? (the provider's free "list models" call)
+  routers/account.py API tokens and model credentials
   mcp_client.py      MCP over Streamable HTTP by hand: initialize -> initialized -> tools/list
   manifest.py        what an agent gets at runtime
   routers/           auth, agents, mcp, public
@@ -65,6 +75,26 @@ backend/dev/demo_mcp_server.py   a hand-written MCP server, so you can see the s
 ```
 
 ### Auth, and why it's built this way
+No endpoint takes a user id from the client. Every request is matched to a user on the
+server, from one of two credentials:
+
+| Who | How | Stored as |
+|---|---|---|
+| Browsers | session cookie set at login | sha256 of the token |
+| Programs (CLI, scripts, the sandbox later) | `Authorization: Bearer at_…` from Account → API tokens | sha256 of the token |
+
+```bash
+curl -H "Authorization: Bearer at_…" http://127.0.0.1:8000/api/city   # your town, nobody else's
+```
+
+- **API tokens:** shown once, optionally expire, and record when they were last used. They
+  can't create tokens or read model keys; only a browser session can, so a leaked token
+  can't spread.
+- **Bad tokens:** a bad or expired token gets a `401` (not "signed out"), so scripts fail loudly.
+- **Isolation tests:** `tests/test_isolation.py` has a second user try every endpoint against
+  the first user's agents, files, connections, tokens and keys, with a session and with a
+  token. Every attempt gets 404.
+
 - **Passwords:** argon2id (`argon2-cffi`). Login is equally slow for unknown emails and
   wrong passwords, so the timing doesn't reveal which emails have accounts.
 - **Sessions:** a random 256-bit token in an `HttpOnly`, `SameSite=Lax` cookie. The database
@@ -87,7 +117,8 @@ backend/dev/demo_mcp_server.py   a hand-written MCP server, so you can see the s
 ## Next: the sandbox (Modal)
 1. `POST /api/agents/{id}/runs`: create a run, then start a Modal Sandbox with the manifest.
 2. In the sandbox, write `files/`, start the stdio MCP servers, and connect the HTTP ones. A
-   short-lived run token lets the sandbox fetch decrypted credentials per connection.
+   short-lived run token (scoped to that run, unlike an API token) lets the sandbox fetch the
+   decrypted model key and connection credentials it needs.
 3. Run the agent loop (Claude Agent SDK or `codex exec`) with only the granted tools.
 4. Stream events back (tool calls, file reads), so the city can show the agent walking.
 5. Egress allowlist: the sandbox may reach the model API and the granted MCP hosts only.

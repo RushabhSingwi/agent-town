@@ -1,7 +1,7 @@
 // The card at the bottom of the screen: whatever you clicked in the city.
 
 import { useEffect, useState } from 'react'
-import { api, type City, type Connection, type FileFull, type Grant, type MyAgent, type Share } from './api'
+import { api, type City, type Connection, type Credential, type FileFull, type Grant, type MyAgent, type Share } from './api'
 import { STATUS_LABEL } from './city/layout'
 import { Err, Md, Modal, msg, readFiles } from './ui'
 
@@ -116,6 +116,7 @@ export function AgentCard({ agent, city, floor, reload, onClose }: { agent: MyAg
                   </div>}
                 </li>))}
             </ul>}
+          <ModelPicker agent={agent} run={run} />
           <label className="check"><input type="checkbox" checked={agent.can_use_public}
             onChange={e => run(() => api.updateAgent(agent.id, { can_use_public: e.target.checked }))} />
             May read what others shared in the public district</label>
@@ -221,5 +222,28 @@ export function LibraryCard({ shares, me, reload, onClose }: { shares: Share[]; 
         </li>))}</ul>
       {open && <FileModal file={open} editable={false} onClose={() => setOpen(null)} />}
     </div>
+  )
+}
+
+function ModelPicker({ agent, run }: { agent: MyAgent; run: (fn: () => Promise<unknown>) => Promise<void> }) {
+  const [creds, setCreds] = useState<Credential[] | null>(null)
+  const [model, setModel] = useState(agent.model)
+  useEffect(() => { api.credentials().then(d => setCreds(d.credentials), () => setCreds([])) }, [])
+  if (creds === null) return null
+  const def = creds.find(c => c.is_default)
+  return (
+    <>
+      <h3>Runs on</h3>
+      {creds.length === 0 ? <p className="empty">No model key yet. Add your API key under your @username (top right).</p> :
+        <div className="row tight">
+          <select value={agent.model_credential_id ?? 0}
+            onChange={e => run(() => api.updateAgent(agent.id, { model_credential_id: Number(e.target.value) }))}>
+            <option value={0}>Default{def ? ` (${def.label})` : ''}</option>
+            {creds.map(c => <option key={c.id} value={c.id}>{c.label}{c.hint ? ` …${c.hint}` : ''}</option>)}
+          </select>
+          <input className="note" value={model} placeholder="model (blank = provider default)" onChange={e => setModel(e.target.value)}
+            onBlur={() => model !== agent.model && run(() => api.updateAgent(agent.id, { model }))} />
+        </div>}
+    </>
   )
 }

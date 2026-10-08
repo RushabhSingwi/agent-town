@@ -2,7 +2,7 @@
 
 import re
 
-from .models import DEFINITION, Agent, AgentFile, McpConnection, PublicShare, User
+from .models import DEFINITION, Agent, AgentFile, ApiToken, McpConnection, ModelCredential, PublicShare, User
 
 
 def frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -40,6 +40,7 @@ def agent_summary(a: Agent) -> dict:
 
 def agent_owner_view(a: Agent, share: PublicShare | None, file_shares: dict[int, int]) -> dict:
     return {**agent_summary(a), "can_use_public": a.can_use_public,
+            "model_credential_id": a.model_credential_id, "model": a.model,
             "files": [{**file_full(f), "share_id": file_shares.get(f.id)} for f in a.files],
             "grants": [{"connection_id": g.connection_id, "tool_name": g.tool_name} for g in a.grants],
             "share_id": share.id if share else None}
@@ -69,3 +70,19 @@ def share(s: PublicShare, with_content: bool = False) -> dict:
 
 def definition(a: Agent) -> AgentFile | None:
     return next((f for f in a.files if f.path == DEFINITION), None)
+
+
+def _iso(dt):
+    return dt.isoformat() if dt else None
+
+
+def api_token(t: ApiToken) -> dict:
+    return {"id": t.id, "name": t.name, "prefix": t.prefix, "created_at": _iso(t.created_at),
+            "last_used_at": _iso(t.last_used_at), "expires_at": _iso(t.expires_at)}
+
+
+def credential(c: ModelCredential) -> dict:
+    """Never the secret: just enough to recognise it."""
+    return {"id": c.id, "provider": c.provider, "kind": c.kind, "label": c.label, "hint": c.hint,
+            "is_default": c.is_default, "status": c.status, "status_detail": c.status_detail,
+            "last_checked_at": _iso(c.last_checked_at), "created_at": _iso(c.created_at)}

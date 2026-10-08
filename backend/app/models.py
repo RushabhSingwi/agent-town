@@ -1,6 +1,8 @@
 """The tables.
 
-users ─┬─ sessions                 login sessions (only a hash of the cookie is stored)
+users ─┬─ sessions                 browser logins (only a hash of the cookie is stored)
+       ├─ api_tokens               "Authorization: Bearer at_…" for scripts and sandboxes (hashed too)
+       ├─ model_credentials        the user's own API key / subscription token, encrypted
        ├─ agents ─┬─ agent_files    the agent's markdown: AGENT.md plus any knowledge files
        │          └─ agent_tool_grants ──┐  which tools this agent may use
        ├─ mcp_connections ─ mcp_tools ◄──┘  a user's MCP servers and the tools they expose
@@ -44,6 +46,44 @@ class AuthSession(Base):
     user: Mapped[User] = relationship()
 
 
+class ApiToken(Base):
+    """A long-lived token for programs: the CLI, scripts, and (later) a sandbox run.
+    Shown once at creation; only its sha256 is stored, like sessions."""
+    __tablename__ = "api_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    prefix: Mapped[str] = mapped_column(String(16))  # first characters, so you can tell tokens apart
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship()
+
+
+class ModelCredential(Base):
+    """What an agent's model calls are paid with: the user's own, never the platform's.
+    provider: anthropic | openai.  kind: api_key | subscription (Claude `setup-token`,
+    Codex auth.json). The secret is Fernet-encrypted and never leaves the server through the API."""
+    __tablename__ = "model_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    kind: Mapped[str] = mapped_column(String(20))
+    label: Mapped[str] = mapped_column(String(80))
+    secret_enc: Mapped[str] = mapped_column(Text)
+    hint: Mapped[str] = mapped_column(String(12), default="")  # last 4 characters, to recognise it
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    # unverified | valid | invalid | error
+    status: Mapped[str] = mapped_column(String(20), default="unverified")
+    status_detail: Mapped[str] = mapped_column(Text, default="")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Agent(Base):
     __tablename__ = "agents"
     __table_args__ = (UniqueConstraint("owner_id", "slug"),)
@@ -56,6 +96,10 @@ class Agent(Base):
     color: Mapped[str] = mapped_column(String(7), default="#8a6fd1")
     # May this agent read what other people shared in the public district?
     can_use_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Which of the owner's model credentials it runs on (None: the owner's default) and which model.
+    model_credential_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_credentials.id", ondelete="SET NULL"))
+    model: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 

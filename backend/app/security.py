@@ -30,6 +30,16 @@ def new_session_token() -> tuple[str, str]:
     return token, hash_token(token)
 
 
+API_TOKEN_PREFIX = "at_"
+
+
+def new_api_token() -> tuple[str, str]:
+    """Like a session token, but with a recognisable prefix so leaked tokens are easy to spot
+    (and secret scanners can be taught the pattern)."""
+    token = API_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    return token, hash_token(token)
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 

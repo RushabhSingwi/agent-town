@@ -10,7 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import views
-from .models import Agent, McpConnection, PublicShare
+from .models import Agent, McpConnection, ModelCredential, PublicShare
+
+
+DEFAULT_MODEL = {"anthropic": "claude-sonnet-5-5", "openai": ""}  # "": the provider's CLI default
 
 
 def build_manifest(db: Session, a: Agent) -> dict:
@@ -38,8 +41,17 @@ def build_manifest(db: Session, a: Agent) -> dict:
                 continue
             public.append(item)
 
+    cred = db.get(ModelCredential, a.model_credential_id) if a.model_credential_id else db.scalar(
+        select(ModelCredential).where(ModelCredential.owner_id == a.owner_id, ModelCredential.is_default.is_(True)))
+    model = None
+    if cred:
+        model = {"credential_id": cred.id, "provider": cred.provider, "kind": cred.kind,
+                 "status": cred.status, "model": a.model or DEFAULT_MODEL[cred.provider]}
+
     return {
         "version": 1,
+        # The run is billed to this, the owner's own credential. None: they must add one first.
+        "model": model,
         "agent": {"id": a.id, "owner": a.owner.username, "name": a.name, "slug": a.slug,
                   "description": a.description, "frontmatter": meta},
         "instructions": body.strip(),
