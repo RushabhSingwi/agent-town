@@ -1,9 +1,9 @@
 """The agent manifest: everything an agent is given when it runs.
 
-This is the contract with the sandbox provider (Modal, later). The sandbox gets this JSON,
+This is the contract with the sandbox (runner/runner.py). The sandbox gets this JSON,
 writes the files, connects only the listed tools, and starts the agent with AGENT.md as its
-instructions. Secrets are NOT in here: a connection's credentials are fetched server-side by
-the runtime when it opens that connection, so a manifest can be logged or shown safely.
+instructions. Secrets are NOT in here: the sandbox fetches the model credential and MCP auth headers
+separately (/api/runtime/setup, with its run token), so a manifest can be logged or shown safely.
 """
 
 from sqlalchemy import select

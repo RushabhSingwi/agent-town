@@ -38,6 +38,17 @@ export type Share = {
   file?: FileFull | (FileStat & { agent: string })
 }
 
+export type RunStatus = 'starting' | 'ready' | 'busy' | 'stopped' | 'error'
+export type Run = {
+  id: number; agent_id: number; status: RunStatus; detail: string; provider: string
+  created_at: string; last_active_at: string; ended_at: string | null
+}
+export type RunEvent = {
+  id: number; created_at: string
+  kind: 'user' | 'text' | 'tool' | 'tool_result' | 'done' | 'status' | 'error'
+  data: Record<string, unknown>
+}
+
 export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[] }
 
 export class ApiError extends Error {
@@ -92,6 +103,11 @@ export const api = {
     call<Share>('PATCH', `/api/public/${id}`, patch),
   unshare: (id: number) => call('DELETE', `/api/public/${id}`),
   getShare: (id: number) => call<Share>('GET', `/api/public/${id}`),
+
+  startRun: (agentId: number) => call<Run>('POST', `/api/agents/${agentId}/runs`),
+  runEvents: (id: number, after: number) => call<{ run: Run; events: RunEvent[] }>('GET', `/api/runs/${id}/events?after=${after}`),
+  sendMessage: (id: number, text: string) => call<RunEvent>('POST', `/api/runs/${id}/messages`, { text }),
+  stopRun: (id: number) => call<Run>('DELETE', `/api/runs/${id}`),
 
   tokens: () => call<ApiToken[]>('GET', '/api/account/tokens'),
   createToken: (name: string, expires_days: number | null) =>

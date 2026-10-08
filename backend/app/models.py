@@ -6,7 +6,8 @@ users ─┬─ sessions                 browser logins (only a hash of the cook
        ├─ agents ─┬─ agent_files    the agent's markdown: AGENT.md plus any knowledge files
        │          └─ agent_tool_grants ──┐  which tools this agent may use
        ├─ mcp_connections ─ mcp_tools ◄──┘  a user's MCP servers and the tools they expose
-       └─ public_shares             what a user put in the public district
+       ├─ public_shares             what a user put in the public district
+       └─ runs ─ run_events         an agent running in its own sandbox, and what it said and did
 """
 
 from datetime import datetime, timezone
@@ -47,7 +48,7 @@ class AuthSession(Base):
 
 
 class ApiToken(Base):
-    """A long-lived token for programs: the CLI, scripts, and (later) a sandbox run.
+    """A long-lived token for programs: the CLI and scripts. (Sandboxes get a run token instead.)
     Shown once at creation; only its sha256 is stored, like sessions."""
     __tablename__ = "api_tokens"
 
@@ -201,3 +202,41 @@ class PublicShare(Base):
     owner: Mapped[User] = relationship()
     agent: Mapped[Agent | None] = relationship()
     file: Mapped[AgentFile | None] = relationship()
+
+
+class Run(Base):
+    """One sandbox for one agent: started when its owner opens a chat, stopped when they close it
+    or it goes idle. Many turns (messages) happen in one run.
+
+    status: starting -> ready <-> busy -> stopped | error.
+    The sandbox authenticates with a run token ("rt_…"): only its sha256 is stored, it works only
+    for this run, and only until the run ends."""
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    credential_id: Mapped[int | None] = mapped_column(ForeignKey("model_credentials.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(20), default="starting")
+    detail: Mapped[str] = mapped_column(Text, default="")
+    provider: Mapped[str] = mapped_column(String(20))         # local | modal
+    sandbox_id: Mapped[str] = mapped_column(String(200), default="")
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)  # owner's last message
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)    # sandbox's last poll
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    agent: Mapped[Agent] = relationship()
+
+
+class RunEvent(Base):
+    """Everything in a run's conversation, in order (id is the cursor). kind:
+    user | text | tool | tool_result | done | status | error. The sandbox posts all but `user`."""
+    __tablename__ = "run_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

@@ -57,10 +57,11 @@ function Models() {
           <button type="button" className={kind === 'subscription' ? 'on' : ''} onClick={() => setKind('subscription')}>Subscription</button>
         </div>
         {kind === 'subscription' && !data?.allow_subscription_tokens
-          ? <p className="note-box">Subscriptions are off on this server. Anthropic and OpenAI don't let third-party services run on
-            people's subscriptions, so a shared Agent Town uses API keys. Running Agent Town just for yourself?
-            Start it with <code>AGENTTOWN_ALLOW_SUBSCRIPTION_TOKENS=true</code>.</p>
+          ? <p className="note-box">Subscriptions are off on this server; use an API key.</p>
           : <>
+            {kind === 'subscription' && <p className="note-box">Your token runs only your own agents, in their own sandboxes, and is
+              never shown again. Using a subscription outside the provider's own apps is governed by your plan's terms
+              with {provider === 'anthropic' ? 'Anthropic' : 'OpenAI'}; check them, since the account is yours.</p>}
             <label>{h.label} <span className="hint">{h.how}</span>
               {kind === 'subscription' && provider === 'openai'
                 ? <textarea value={secret} onChange={e => setSecret(e.target.value)} rows={4} placeholder={h.placeholder} />

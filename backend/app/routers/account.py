@@ -69,9 +69,8 @@ def list_credentials(user: User = Depends(require_session), db: Session = Depend
 @router.post("/credentials")
 def add_credential(body: CredentialIn, user: User = Depends(require_session), db: Session = Depends(get_db)):
     if body.kind == "subscription" and not settings().allow_subscription_tokens:
-        raise HTTPException(403, "Subscription tokens are off on this server: providers don't allow "
-                                 "third-party services to use them. Use an API key, or self-host Agent Town "
-                                 "for yourself with AGENTTOWN_ALLOW_SUBSCRIPTION_TOKENS=true.")
+        raise HTTPException(403, "Subscription tokens are off on this server; use an API key "
+                                 "(AGENTTOWN_ALLOW_SUBSCRIPTION_TOKENS turns them on).")
     problem = model_check.shape_error(body.provider, body.kind, body.secret)
     if problem:
         raise HTTPException(422, problem)

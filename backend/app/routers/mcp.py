@@ -30,8 +30,8 @@ def view(db: Session, c: McpConnection) -> dict:
 
 
 def run_check(db: Session, c: McpConnection) -> None:
-    """Handshake with the server and store what it says. stdio servers run in the sandbox,
-    which doesn't exist yet, so they can't be checked from here."""
+    """Handshake with the server and store what it says. stdio servers only ever start
+    inside an agent's sandbox, so they can't be checked from here."""
     c.last_checked_at = datetime.now(timezone.utc)
     if c.transport == "stdio":
         c.status, c.status_detail = "needs_sandbox", "stdio servers start inside the agent's sandbox"

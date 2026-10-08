@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api, type City, type Connection, type Credential, type FileFull, type Grant, type MyAgent, type Share } from './api'
+import { ChatModal } from './chat'
 import { STATUS_LABEL } from './city/layout'
 import { Err, Md, Modal, msg, readFiles } from './ui'
 
@@ -40,7 +41,8 @@ function ManifestModal({ agentId, onClose }: { agentId: number; onClose: () => v
   return (
     <Modal title="Manifest" onClose={onClose} wide>
       <p className="hint">What this agent is handed when it runs: its instructions, files, the tools it may use, and the public
-        items it can read. A sandbox (Modal, later) starts from exactly this. Credentials are never in it.</p>
+        items it can read. Its sandbox starts from exactly this. Credentials are never in it: the sandbox
+        fetches them separately, with a token that only works for that one run.</p>
       <pre className="json">{data}</pre>
     </Modal>
   )
@@ -50,6 +52,7 @@ function ManifestModal({ agentId, onClose }: { agentId: number; onClose: () => v
 export function AgentCard({ agent, city, floor, reload, onClose }: { agent: MyAgent; city: City; floor: string | null; reload: Reload; onClose: () => void }) {
   const [open, setOpen] = useState<FileFull | null>(null)
   const [manifest, setManifest] = useState(false)
+  const [chat, setChat] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState('')
 
@@ -128,6 +131,7 @@ export function AgentCard({ agent, city, floor, reload, onClose }: { agent: MyAg
           ? <button onClick={() => run(() => api.unshare(agent.share_id!))}>Make private</button>
           : <><input className="note" placeholder="Note for the public: what it's for (optional)" value={note} onChange={e => setNote(e.target.value)} />
             <button onClick={() => run(() => api.share({ kind: 'agent', agent_id: agent.id, note }))}>Share publicly</button></>}
+        <button className="primary" onClick={() => setChat(true)}>Chat</button>
         <button onClick={() => setManifest(true)}>Manifest</button>
         <span className="grow" />
         <button className="danger" onClick={() => { if (confirm(`Delete ${agent.name} and its files?`)) run(async () => { await api.deleteAgent(agent.id); onClose() }) }}>Delete</button>
@@ -136,6 +140,7 @@ export function AgentCard({ agent, city, floor, reload, onClose }: { agent: MyAg
       {open && <FileModal file={open} editable onClose={() => setOpen(null)}
         onSave={async content => { await api.putFile(agent.id, open.path, content); await reload(); setOpen(null) }} />}
       {manifest && <ManifestModal agentId={agent.id} onClose={() => setManifest(false)} />}
+      {chat && <ChatModal agent={agent} onClose={() => setChat(false)} />}
     </div>
   )
 }

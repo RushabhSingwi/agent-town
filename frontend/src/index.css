@@ -97,3 +97,16 @@ ul.list li.nohover:hover { background: none; }
 .row.tight { margin-top: 4px; }
 select { font: inherit; font-size: 13px; border: 1px solid #d8cbb0; border-radius: 8px; padding: 6px 8px; background: #fff; }
 .note-box pre.json { margin: 6px 0; white-space: pre-wrap; word-break: break-all; }
+
+/* chat with a running agent */
+.dot.starting, .dot.busy { background: #f2b53a; }
+.dot.ready { background: #3ccf6e; }
+.dot.stopped { background: #9aa0a6; }
+.chat { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; min-height: 160px; overflow: auto;
+  background: #f7f0e1; border-radius: 10px; padding: 10px; }
+.chat-user { align-self: flex-end; background: #3f8fd2; color: #fff; border-radius: 12px 12px 2px 12px; padding: 6px 10px;
+  max-width: 80%; white-space: pre-wrap; }
+.chat-agent { align-self: flex-start; background: #fffcf4; border-radius: 12px 12px 12px 2px; padding: 2px 12px; max-width: 90%; }
+.chat-tool { margin: 0; color: #6b5f4a; overflow-wrap: anywhere; }
+.chat-tool pre.json { max-height: 200px; white-space: pre-wrap; }
+.chat-meta { margin: 0; color: #9a8c70; font-size: 12px; text-align: center; }

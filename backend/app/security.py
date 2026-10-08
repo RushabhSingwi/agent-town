@@ -40,6 +40,15 @@ def new_api_token() -> tuple[str, str]:
     return token, hash_token(token)
 
 
+RUN_TOKEN_PREFIX = "rt_"
+
+
+def new_run_token() -> tuple[str, str]:
+    """What a sandbox uses to talk to us. Unlike an API token it's good for one run only."""
+    token = RUN_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    return token, hash_token(token)
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
