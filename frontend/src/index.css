@@ -110,3 +110,61 @@ select { font: inherit; font-size: 13px; border: 1px solid #d8cbb0; border-radiu
 .chat-tool { margin: 0; color: #6b5f4a; overflow-wrap: anywhere; }
 .chat-tool pre.json { max-height: 200px; white-space: pre-wrap; }
 .chat-meta { margin: 0; color: #9a8c70; font-size: 12px; text-align: center; }
+
+/* adding agents */
+label.button { font-size: 13px; border: 1px solid #cfc3a8; background: #fff; border-radius: 8px; padding: 5px 11px; cursor: pointer; }
+label.button.primary { background: #ffd98f; border-color: #e0a640; font-weight: 600; }
+.drop { border: 2px dashed #cfc3a8; border-radius: 12px; padding: 28px 16px; display: flex; flex-direction: column;
+  align-items: center; gap: 10px; text-align: center; background: #fbf6ea; }
+.drop.on { border-color: #e0a640; background: #fff3d6; }
+.row.center { justify-content: center; margin-top: 0; }
+ul.list.import { max-height: 45vh; overflow: auto; }
+.shared-pick { margin-top: 10px; }
+.shared-pick ul.list { max-height: 30vh; overflow: auto; }
+
+/* an agent: about on the left, chat on the right, the city in between */
+.side { position: fixed; top: 70px; bottom: 12px; background: rgba(255,252,244,.98); border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.32); display: flex; flex-direction: column; overflow: hidden; z-index: 2; }
+.side-left { left: 12px; width: 360px; }
+.side-right { right: 12px; width: 420px; }
+.agent-tabs { display: none; }
+.about { padding: 12px 16px 16px; overflow: auto; height: 100%; }
+.about-head { display: flex; align-items: flex-start; gap: 8px; }
+.about-head h2 { flex: 1; margin: 0 0 2px; font-size: 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.about h3 { margin: 14px 0 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .6px; color: #8a7a5c; }
+ul.can { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+ul.can li { background: #f3ead6; border-radius: 8px; padding: 5px 9px; }
+ul.can li.warn { background: #fde8d4; color: #8a4a12; }
+
+.chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.panel-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #eadfc8; }
+.chat-panel .chat { flex: 1; max-height: none; min-height: 0; border-radius: 0; }
+.chat-panel .err { padding: 0 14px; }
+.chat-empty { margin: auto 0; text-align: center; color: #5e5340; padding: 0 12px; }
+.chat-empty p { margin: 6px 0; }
+.chat-input { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #eadfc8; align-items: flex-end; }
+.chat-input textarea { flex: 1; resize: none; font: inherit; border: 1px solid #cfc3a8; border-radius: 8px; padding: 6px 8px; }
+.chat-panel .note-box { margin: 10px; }
+.typing span { animation: blink 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay: .2s; }
+.typing span:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+
+/* phones and narrow windows: one bottom sheet with tabs */
+@media (max-width: 900px) {
+  .agent-view { position: fixed; left: 8px; right: 8px; bottom: 8px; height: 62vh; z-index: 2; display: flex; flex-direction: column;
+    background: rgba(255,252,244,.98); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.32); overflow: hidden; }
+  .agent-tabs { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid #eadfc8; }
+  .agent-tabs button:not(.x) { flex: 1; border-radius: 8px; }
+  .agent-tabs button.on { background: #ffd98f; border-color: #e0a640; font-weight: 600; }
+  .side { position: static; width: auto; box-shadow: none; border-radius: 0; flex: 1; min-height: 0; background: none; }
+  .agent-view.tab-chat .side-left, .agent-view.tab-about .side-right { display: none; }
+  .desktop-only { display: none; }
+}
+
+/* phones: one tidy header row */
+@media (max-width: 600px) {
+  .bar { top: 8px; left: 8px; right: 8px; padding: 6px 8px; gap: 5px; overflow-x: auto; }
+  .bar h1 { font-size: 14px; white-space: nowrap; }
+  .bar button { white-space: nowrap; padding: 4px 8px; font-size: 12px; }
+}

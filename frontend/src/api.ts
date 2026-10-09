@@ -49,7 +49,17 @@ export type RunEvent = {
   data: Record<string, unknown>
 }
 
-export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[] }
+export type SharedFile = FileStat & { content?: string }
+
+export type ImportFile = { path: string; content: string }
+export type ImportPlan = {
+  agents: { source: string; name: string; description: string; exists: boolean; files: { source: string; path: string }[] }[]
+  shared: { source: string; path: string }[]
+  skipped: { path: string; reason: string }[]
+  needs_main: boolean; candidates: string[]
+}
+
+export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[]; shared_files: SharedFile[] }
 
 export class ApiError extends Error {
   status: number
@@ -104,6 +114,14 @@ export const api = {
   unshare: (id: number) => call('DELETE', `/api/public/${id}`),
   getShare: (id: number) => call<Share>('GET', `/api/public/${id}`),
 
+  sharedFile: (id: number) => call<SharedFile & { content: string }>('GET', `/api/files/${id}`),
+  putSharedFile: (path: string, content: string) => call<SharedFile>('PUT', '/api/files', { path, content }),
+  deleteSharedFile: (id: number) => call('DELETE', `/api/files/${id}`),
+  previewImport: (files: ImportFile[], main?: string) => call<ImportPlan>('POST', '/api/import/preview', { files, main }),
+  doImport: (body: { files: ImportFile[]; agents: { source: string; name: string; files: string[] }[]; shared: string[] }) =>
+    call<{ created: MyAgent[]; updated: MyAgent[]; shared: number }>('POST', '/api/import', body),
+
+  activeRun: (agentId: number) => call<Run | null>('GET', `/api/agents/${agentId}/runs/active`),
   startRun: (agentId: number) => call<Run>('POST', `/api/agents/${agentId}/runs`),
   runEvents: (id: number, after: number) => call<{ run: Run; events: RunEvent[] }>('GET', `/api/runs/${id}/events?after=${after}`),
   sendMessage: (id: number, text: string) => call<RunEvent>('POST', `/api/runs/${id}/messages`, { text }),

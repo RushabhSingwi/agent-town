@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type City } from './api'
-import { AgentCard, LibraryCard, SharedAgentCard, StationCard } from './cards'
+import { AgentView } from './agent'
+import { LibraryCard, SharedAgentCard, SharedFilesCard, StationCard } from './cards'
 import { layout, type Thing } from './city/layout'
 import { CityView } from './city/render'
 import { AuthModal, NewAgentModal, NewToolModal } from './modals'
 import { AccountModal } from './account'
+import { AddModal } from './importer'
 
 type Sel = { key: string; floor: string | null } | null
 
@@ -14,7 +16,7 @@ export default function App() {
   const cardRef = useRef<HTMLDivElement>(null)
   const [city, setCity] = useState<City | null>(null)
   const [sel, setSel] = useState<Sel>(null)
-  const [modal, setModal] = useState<'login' | 'signup' | 'agent' | 'tool' | 'account' | null>(null)
+  const [modal, setModal] = useState<'login' | 'signup' | 'add' | 'agent' | 'tool' | 'account' | null>(null)
   const [refit, setRefit] = useState(true)
 
   const reload = useCallback(async () => { setCity(await api.city()) }, [])
@@ -50,17 +52,17 @@ export default function App() {
   const thing = sel && L ? L.things.find(t => t.key === sel.key) : null
   useEffect(() => { if (sel && L && !thing) setSel(null) }, [sel, L, thing])
 
+  // one of your agents: side panels (about + chat) instead of the bottom card
+  const agent = city && thing?.kind === 'agent' ? city.agents.find(x => x.id === thing.id) : undefined
+
   const card = (() => {
-    if (!city || !thing) return null
+    if (!city || !thing || thing.kind === 'agent') return null
     const close = () => setSel(null)
-    if (thing.kind === 'agent') {
-      const a = city.agents.find(x => x.id === thing.id)
-      return a && <AgentCard key={a.id} agent={a} city={city} floor={sel!.floor} reload={reload} onClose={close} />
-    }
     if (thing.kind === 'station') {
       const c = city.connections.find(x => x.id === thing.id)
       return c && <StationCard key={c.id} conn={c} reload={reload} onClose={close} />
     }
+    if (thing.kind === 'files') return <SharedFilesCard files={city.shared_files} reload={reload} onClose={close} />
     if (thing.kind === 'shared') {
       const s = city.public.find(x => x.id === thing.id)
       return s && <SharedAgentCard key={s.id} share={s} onClose={close} />
@@ -69,13 +71,15 @@ export default function App() {
   })()
 
   useEffect(() => { viewRef.current?.setBottomInset(cardRef.current?.offsetHeight ?? 0) })
-  const hasCard = !!card
+  const hasCard = !!card, hasAgent = !!agent
   useEffect(() => {
     const v = viewRef.current
-    if (!v || !sel || !hasCard) return
-    v.setBottomInset(cardRef.current?.offsetHeight ?? 0)
+    if (!v || !sel || !(hasCard || hasAgent)) return
+    const wide = innerWidth > 900
+    v.setSideInsets(hasAgent && wide ? 372 : 0, hasAgent && wide ? 432 : 0)
+    v.setBottomInset(hasAgent ? (wide ? 0 : innerHeight * 0.62) : cardRef.current?.offsetHeight ?? 0)
     v.focusOn(sel.key)
-  }, [sel?.key, hasCard]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sel?.key, hasCard, hasAgent]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const me = city?.me
   return (
@@ -86,7 +90,7 @@ export default function App() {
         <span className="grow" />
         <button onClick={() => viewRef.current?.fit()}>Fit</button>
         {me ? <>
-          <button className="primary" onClick={() => setModal('agent')}>+ Agent</button>
+          <button className="primary" onClick={() => setModal('add')}>+ Add agents</button>
           <button className="primary" onClick={() => setModal('tool')}>+ Tool</button>
           <button className="who" onClick={() => setModal('account')} title="Models and API tokens">@{me.username}</button>
           <button onClick={async () => { await api.logout(); setSel(null); setRefit(true); reload() }}>Sign out</button>
@@ -102,14 +106,18 @@ export default function App() {
         build your own private district and connect your MCP tools.
       </div>}
       {city && me && city.agents.length === 0 && !thing && <div className="hello">
-        <b>Your district is empty.</b> Add an agent (a markdown file, like a Claude Code agent) with <b>+ Agent</b>, and connect MCP servers with <b>+ Tool</b>.
+        <b>Your district is empty.</b> Click <b>+ Add agents</b> and drop in your agent files or a whole folder
+        (like a <code>.claude</code> folder). Then open an agent and press <b>Chat</b>.
       </div>}
 
       {card && <div ref={cardRef} className="dock">{card}</div>}
+      {agent && city && <AgentView key={agent.id} agent={agent} city={city} floor={sel!.floor} reload={reload} onClose={() => setSel(null)} />}
 
       {(modal === 'login' || modal === 'signup') && <AuthModal mode={modal} onClose={() => setModal(null)}
         onDone={() => { setModal(null); setRefit(true); reload() }} />}
       {modal === 'account' && me && <AccountModal username={me.username} onClose={() => { setModal(null); reload() }} />}
+      {modal === 'add' && <AddModal onClose={() => setModal(null)} onWrite={() => setModal('agent')}
+        onDone={async id => { setModal(null); setRefit(true); await reload(); if (id) setSel({ key: `agent:${id}`, floor: null }) }} />}
       {modal === 'agent' && <NewAgentModal onClose={() => setModal(null)}
         onDone={async id => { setModal(null); setRefit(true); await reload(); setSel({ key: `agent:${id}`, floor: null }) }} />}
       {modal === 'tool' && <NewToolModal onClose={() => setModal(null)}

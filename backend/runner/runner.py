@@ -64,26 +64,40 @@ def server_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") or "server"
 
 
-def write_files(m: dict) -> None:
+def write_files(m: dict) -> list[str]:
+    """Shared files first, then the agent's own (which win on a clash), then public items.
+    Returns the paths written, so the agent can be told what it has."""
     WORK.mkdir(parents=True, exist_ok=True)
-    out = [(f["path"], f["content"]) for f in m["files"] if f["path"] != "AGENT.md"]
+    out = [(f["path"], f["content"]) for f in m.get("shared", [])]
+    out += [(f["path"], f["content"]) for f in m["files"] if f["path"] != "AGENT.md"]
     for p in m["public"]:
         files = [p["file"]] if p.get("file") else (p.get("agent") or {}).get("files", [])
         for f in files:
             out.append((f"public/{p['owner']}/{server_name(p['title'])}/{f['path']}", f.get("content", "")))
+    written = []
     for rel, content in out:
         dest = (WORK / rel).resolve()
         if WORK.resolve() not in dest.parents:
             continue  # paths are validated by the API; this is belt and braces
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content)
+        if rel not in written:
+            written.append(rel)
+    return written
 
 
-def system_prompt(m: dict) -> str:
-    extra = ["Your knowledge files are in the current directory."]
+def system_prompt(m: dict, files: list[str]) -> str:
+    """The agent's own instructions, plus where its files are. Instructions written for another
+    setup may link `../../content/a.md`; the list lets it find content/a.md here."""
+    extra = "\n\n---\nYour files are in the current directory."
+    if files:
+        shown = files[:200]
+        extra += " Read the ones your instructions mention before you start:\n" + "\n".join(f"- {f}" for f in shown)
+        if len(files) > len(shown):
+            extra += f"\n- … and {len(files) - len(shown)} more"
     if m["public"]:
-        extra.append("Things other people shared for agents to read are under public/<owner>/.")
-    return m["instructions"] + "\n\n" + " ".join(extra)
+        extra += "\nThings other people shared for agents to read are under public/<owner>/."
+    return m["instructions"] + extra
 
 
 def servers(m: dict, auth_headers: dict) -> list[dict]:
@@ -122,8 +136,8 @@ class Claude:
     """Claude Code in print mode. Tools: file tools in the working directory (plus Bash in a real
     sandbox) and exactly the granted MCP tools. dontAsk mode refuses anything not allowed."""
 
-    def __init__(self, m: dict, cred: dict, auth_headers: dict):
-        self.model, self.session, self.system = cred["model"], None, system_prompt(m)
+    def __init__(self, m: dict, cred: dict, auth_headers: dict, files: list[str]):
+        self.model, self.session, self.system = cred["model"], None, system_prompt(m, files)
         self.env = {**os.environ}
         for k in ("AGENTTOWN_RUN_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"):
             self.env.pop(k, None)
@@ -191,7 +205,7 @@ def toml_str(s: str) -> str:
 class Codex:
     """Codex in exec mode, configured through its own CODEX_HOME so nothing else is read."""
 
-    def __init__(self, m: dict, cred: dict, auth_headers: dict):
+    def __init__(self, m: dict, cred: dict, auth_headers: dict, files: list[str]):
         self.model, self.thread = cred["model"], None
         codex_home = HOME / ".codex"
         codex_home.mkdir(parents=True, exist_ok=True)
@@ -220,7 +234,7 @@ class Codex:
         # In a real sandbox the container is the boundary; locally, Codex's own sandbox is.
         mode = "danger-full-access" if ALLOW_SHELL else "workspace-write"
         self.common = ["--json", "--skip-git-repo-check", "-c", f"sandbox_mode={toml_str(mode)}",
-                       "-c", 'approval_policy="never"', "-c", f"developer_instructions={toml_str(system_prompt(m))}"]
+                       "-c", 'approval_policy="never"', "-c", f"developer_instructions={toml_str(system_prompt(m, files))}"]
         if self.model:
             self.common += ["-m", self.model]
 
@@ -271,8 +285,8 @@ def main() -> None:
     setup = api("GET", "/api/runtime/setup")
     m, cred = setup["manifest"], setup["credential"]
     HOME.mkdir(parents=True, exist_ok=True)
-    write_files(m)
-    engine = (Claude if cred["provider"] == "anthropic" else Codex)(m, cred, setup["auth_headers"])
+    files = write_files(m)
+    engine = (Claude if cred["provider"] == "anthropic" else Codex)(m, cred, setup["auth_headers"], files)
     emit("status", status="ready", detail=f"{m['agent']['name']} is ready")
     cursor, last_turn = 0, time.monotonic()
     while True:

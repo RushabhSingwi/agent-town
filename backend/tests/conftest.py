@@ -6,6 +6,15 @@ from app.db import Base, get_db, make_engine
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def test_settings(monkeypatch):
+    """Tests must not depend on a developer's backend/.env (which may say modal, or a tunnel URL)."""
+    from app.config import settings
+    for k, v in {"sandbox_provider": "local", "public_url": "http://127.0.0.1:8000",
+                 "allow_subscription_tokens": True, "allow_private_mcp_hosts": False}.items():
+        monkeypatch.setattr(settings(), k, v)
+
+
 @pytest.fixture
 def db_session(tmp_path):
     engine = make_engine(f"sqlite:///{tmp_path / 'test.db'}")

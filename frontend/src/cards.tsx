@@ -1,8 +1,7 @@
 // The card at the bottom of the screen: whatever you clicked in the city.
 
 import { useEffect, useState } from 'react'
-import { api, type City, type Connection, type Credential, type FileFull, type Grant, type MyAgent, type Share } from './api'
-import { ChatModal } from './chat'
+import { api, type Connection, type Credential, type FileFull, type MyAgent, type Share, type SharedFile } from './api'
 import { STATUS_LABEL } from './city/layout'
 import { Err, Md, Modal, msg, readFiles } from './ui'
 
@@ -14,7 +13,7 @@ const ago = (iso: string | null) => {
   return s < 60 ? 'just now' : s < 3600 ? `${(s / 60) | 0}m ago` : s < 86400 ? `${(s / 3600) | 0}h ago` : `${(s / 86400) | 0}d ago`
 }
 
-function FileModal({ file, editable, onClose, onSave }: { file: FileFull; editable: boolean; onClose: () => void; onSave?: (content: string) => Promise<void> }) {
+export function FileModal({ file, editable, onClose, onSave }: { file: FileFull; editable: boolean; onClose: () => void; onSave?: (content: string) => Promise<void> }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(file.content)
   const [error, setError] = useState<string | null>(null)
@@ -35,7 +34,7 @@ function FileModal({ file, editable, onClose, onSave }: { file: FileFull; editab
   )
 }
 
-function ManifestModal({ agentId, onClose }: { agentId: number; onClose: () => void }) {
+export function ManifestModal({ agentId, onClose }: { agentId: number; onClose: () => void }) {
   const [data, setData] = useState<string>('Loading…')
   useEffect(() => { api.manifest(agentId).then(m => setData(JSON.stringify(m, null, 2)), e => setData(msg(e))) }, [agentId])
   return (
@@ -45,103 +44,6 @@ function ManifestModal({ agentId, onClose }: { agentId: number; onClose: () => v
         fetches them separately, with a token that only works for that one run.</p>
       <pre className="json">{data}</pre>
     </Modal>
-  )
-}
-
-// ---------- your agent ----------
-export function AgentCard({ agent, city, floor, reload, onClose }: { agent: MyAgent; city: City; floor: string | null; reload: Reload; onClose: () => void }) {
-  const [open, setOpen] = useState<FileFull | null>(null)
-  const [manifest, setManifest] = useState(false)
-  const [chat, setChat] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [note, setNote] = useState('')
-
-  useEffect(() => {
-    const f = floor ? agent.files.find(x => x.path === floor) : null
-    if (f) setOpen(f)
-  }, [floor, agent.files])
-
-  const run = async (fn: () => Promise<unknown>) => {
-    setError(null)
-    try { await fn(); await reload() } catch (e) { setError(msg(e)) }
-  }
-
-  const grants = agent.grants
-  const has = (c: Connection, tool: string | null) => grants.some(g => g.connection_id === c.id && g.tool_name === tool)
-  const toggle = (c: Connection, tool: string | null) => {
-    let next: Grant[]
-    if (has(c, tool)) next = grants.filter(g => !(g.connection_id === c.id && g.tool_name === tool))
-    else if (tool === null) next = [...grants.filter(g => g.connection_id !== c.id), { connection_id: c.id, tool_name: null }]
-    else next = [...grants.filter(g => !(g.connection_id === c.id && g.tool_name === null)), { connection_id: c.id, tool_name: tool }]
-    run(() => api.setGrants(agent.id, next))
-  }
-
-  return (
-    <div className="card">
-      <button className="x" onClick={onClose} aria-label="Close">×</button>
-      <h2><span className="sw" style={{ background: agent.color }} />{agent.name}
-        <span className="pill">{agent.share_id ? 'shared publicly' : 'private'}</span></h2>
-      {agent.description && <p className="tag">{agent.description}</p>}
-
-      <div className="cols">
-        <section>
-          <h3>Floors · {agent.files.length} files · {agent.lines} lines</h3>
-          <ul className="list">
-            {[...agent.files].sort((a, b) => b.lines - a.lines).map(f => (
-              <li key={f.id} onClick={() => setOpen(f)}>
-                <span className="grow">{f.path}{f.share_id ? <span className="mini">in library</span> : null}</span>
-                <span className="meta">{f.lines} ln</span>
-                {f.path !== 'AGENT.md' && <>
-                  <button className="tiny" title={f.share_id ? 'Remove from the public library' : 'Share in the public library'}
-                    onClick={e => { e.stopPropagation(); run(() => f.share_id ? api.unshare(f.share_id) : api.share({ kind: 'file', file_id: f.id })) }}>
-                    {f.share_id ? 'unshare' : 'share'}</button>
-                  <button className="tiny" title="Delete file" onClick={e => { e.stopPropagation(); if (confirm(`Delete ${f.path}?`)) run(() => api.deleteFile(agent.id, f.id)) }}>✕</button>
-                </>}
-              </li>))}
-          </ul>
-          <label className="linklike">+ add files
-            <input type="file" multiple accept=".md,.txt" hidden onChange={async e => {
-              const files = await readFiles(e.target.files)
-              run(async () => { for (const f of files) await api.putFile(agent.id, f.path, f.content) })
-            }} /></label>
-        </section>
-
-        <section>
-          <h3>Tools it may use</h3>
-          {city.connections.length === 0 ? <p className="empty">No MCP connections yet. Add one with <b>+ Tool</b>.</p> :
-            <ul className="list tools">
-              {city.connections.map(c => (
-                <li key={c.id} className="tool">
-                  <label className="grow"><input type="checkbox" checked={has(c, null)} onChange={() => toggle(c, null)} />
-                    <b>{c.name}</b> <span className={`dot ${c.status}`} /> <span className="meta">{has(c, null) ? 'all tools' : STATUS_LABEL[c.status]}</span></label>
-                  {!has(c, null) && c.tools.length > 0 && <div className="subtools">
-                    {c.tools.map(t => <label key={t.name} title={t.description}><input type="checkbox" checked={has(c, t.name)} onChange={() => toggle(c, t.name)} />{t.name}</label>)}
-                  </div>}
-                </li>))}
-            </ul>}
-          <ModelPicker agent={agent} run={run} />
-          <label className="check"><input type="checkbox" checked={agent.can_use_public}
-            onChange={e => run(() => api.updateAgent(agent.id, { can_use_public: e.target.checked }))} />
-            May read what others shared in the public district</label>
-        </section>
-      </div>
-
-      <div className="row">
-        {agent.share_id
-          ? <button onClick={() => run(() => api.unshare(agent.share_id!))}>Make private</button>
-          : <><input className="note" placeholder="Note for the public: what it's for (optional)" value={note} onChange={e => setNote(e.target.value)} />
-            <button onClick={() => run(() => api.share({ kind: 'agent', agent_id: agent.id, note }))}>Share publicly</button></>}
-        <button className="primary" onClick={() => setChat(true)}>Chat</button>
-        <button onClick={() => setManifest(true)}>Manifest</button>
-        <span className="grow" />
-        <button className="danger" onClick={() => { if (confirm(`Delete ${agent.name} and its files?`)) run(async () => { await api.deleteAgent(agent.id); onClose() }) }}>Delete</button>
-      </div>
-      <Err error={error} />
-      {open && <FileModal file={open} editable onClose={() => setOpen(null)}
-        onSave={async content => { await api.putFile(agent.id, open.path, content); await reload(); setOpen(null) }} />}
-      {manifest && <ManifestModal agentId={agent.id} onClose={() => setManifest(false)} />}
-      {chat && <ChatModal agent={agent} onClose={() => setChat(false)} />}
-    </div>
   )
 }
 
@@ -230,7 +132,7 @@ export function LibraryCard({ shares, me, reload, onClose }: { shares: Share[]; 
   )
 }
 
-function ModelPicker({ agent, run }: { agent: MyAgent; run: (fn: () => Promise<unknown>) => Promise<void> }) {
+export function ModelPicker({ agent, run }: { agent: MyAgent; run: (fn: () => Promise<unknown>) => Promise<void> }) {
   const [creds, setCreds] = useState<Credential[] | null>(null)
   const [model, setModel] = useState(agent.model)
   useEffect(() => { api.credentials().then(d => setCreds(d.credentials), () => setCreds([])) }, [])
@@ -250,5 +152,35 @@ function ModelPicker({ agent, run }: { agent: MyAgent; run: (fn: () => Promise<u
             onBlur={() => model !== agent.model && run(() => api.updateAgent(agent.id, { model }))} />
         </div>}
     </>
+  )
+}
+
+// ---------- your shared files ----------
+export function SharedFilesCard({ files, reload, onClose }: { files: SharedFile[]; reload: Reload; onClose: () => void }) {
+  const [open, setOpen] = useState<FileFull | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const run = async (fn: () => Promise<unknown>) => {
+    setError(null)
+    try { await fn(); await reload() } catch (e) { setError(msg(e)) }
+  }
+  return (
+    <div className="card">
+      <button className="x" onClick={onClose} aria-label="Close">×</button>
+      <h2>🗂 Shared files<span className="pill">private · {files.length} files</span></h2>
+      <p className="tag">Knowledge every one of your agents can read: put things several agents need here once, like "about us" or a style guide.</p>
+      <ul className="list">{files.map(f => (
+        <li key={f.id} onClick={async () => { const full = await api.sharedFile(f.id); setOpen({ ...full, content: full.content }) }}>
+          <span className="grow">{f.path}</span><span className="meta">{f.lines} ln</span>
+          <button className="tiny" title="Delete file" onClick={e => { e.stopPropagation(); if (confirm(`Delete ${f.path}?`)) run(() => api.deleteSharedFile(f.id)) }}>✕</button>
+        </li>))}</ul>
+      <label className="linklike">+ add files
+        <input type="file" multiple accept=".md,.txt" hidden onChange={async e => {
+          const picked = await readFiles(e.target.files)
+          run(async () => { for (const f of picked) await api.putSharedFile(f.path, f.content) })
+        }} /></label>
+      <Err error={error} />
+      {open && <FileModal file={open} editable onClose={() => setOpen(null)}
+        onSave={async content => { await api.putSharedFile(open.path, content); await reload(); setOpen(null) }} />}
+    </div>
   )
 }

@@ -23,6 +23,11 @@ class FakeProvider:
     def stop(self, sandbox_id):
         self.stopped.append(sandbox_id)
 
+    def alive(self, sandbox_id):
+        return sandbox_id not in self.dead
+
+    dead: set = set()
+
 
 @pytest.fixture(autouse=True)
 def fake_sandbox(monkeypatch):
@@ -106,7 +111,11 @@ def test_rejected_credential_is_marked_invalid(make_user, client, fake_sandbox):
 def test_open_run_is_reused(make_user, fake_sandbox):
     alice = make_user("alice")
     a = setup_agent(alice)
+    assert alice.get(f"/api/agents/{a['id']}/runs/active").json() is None  # looking starts nothing
+    assert fake_sandbox.started == []
     first = alice.post(f"/api/agents/{a['id']}/runs").json()
+    assert alice.get(f"/api/agents/{a['id']}/runs/active").json()["id"] == first["id"]
+    assert make_user("bob").get(f"/api/agents/{a['id']}/runs/active").status_code == 404
     assert alice.post(f"/api/agents/{a['id']}/runs").json()["id"] == first["id"]
     assert len(fake_sandbox.started) == 1
 
@@ -158,6 +167,29 @@ def test_runs_are_private(make_user, client, fake_sandbox):
     alice.headers["Authorization"] = f"Bearer {at}"
     assert alice.get("/api/runtime/setup").status_code == 401
     assert alice.get(f"/api/runs/{run_id}").status_code == 200  # but the owner's token can watch the run
+
+
+def test_sandbox_that_dies_while_starting_is_reported(make_user, fake_sandbox, db_session):
+    from datetime import datetime, timedelta, timezone
+    from app.models import Run
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    run_id = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
+    FakeProvider.dead = {f"fake-{run_id}"}
+    with db_session() as s:
+        s.get(Run, run_id).created_at = datetime.now(timezone.utc) - timedelta(seconds=20)
+        s.commit()
+    r = alice.get(f"/api/runs/{run_id}").json()
+    FakeProvider.dead = set()
+    assert r["status"] == "error" and "before it could reach Agent Town" in r["detail"]
+
+
+def test_unreachable_public_url_fails_fast(make_user, monkeypatch):
+    monkeypatch.setattr(runs_router, "reachable_problem", lambda: "nothing answers there")
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    r = alice.post(f"/api/agents/{a['id']}/runs")
+    assert r.status_code == 503 and "nothing answers" in r.json()["detail"]
 
 
 def test_silent_sandbox_is_reaped(make_user, client, fake_sandbox, db_session):

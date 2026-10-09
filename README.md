@@ -3,6 +3,13 @@
 A town of AI agents. Sign up, add your agents (markdown files, like Claude Code's
 `.claude/agents/*.md`), connect your MCP servers, and choose what to share with everyone.
 
+- **Adding agents.** **+ Add agents** takes a single `.md`, a few files, or a whole folder (a
+  `.claude` folder, an agents repo). Agent Town finds the agent definitions (frontmatter with
+  `name:`; not skills, commands or memory notes), gives each agent the files its instructions link
+  to, and puts files several agents use (or none links to) into **Shared files**. You see the
+  plan in plain words and confirm. Importing the same folder again updates agents by name.
+- **Shared files (private).** Knowledge all your agents can read, stored once: "about us", a style
+  guide. In a run they sit next to the agent's own files, at the same paths.
 - **Your district (private).** Each agent is a building: one floor per file, the biggest at
   the bottom. A floor's height comes from its line count, and the footprint grows with the
   number of files. Only you can see it.
@@ -89,7 +96,9 @@ backend/app
   routers/account.py API tokens and model credentials
   mcp_client.py      MCP over Streamable HTTP by hand: initialize -> initialized -> tools/list
   manifest.py        what an agent gets at runtime
+  importer.py        a dropped folder -> agents, their files, and shared files (pure functions)
   sandbox.py         where a run's box comes from: local subprocess (dev) or Modal
+  routers/files.py   shared files, and import (preview, then import)
   routers/runs.py    start/stop a run, chat messages, and the sandbox-facing /api/runtime
   routers/           auth, agents, mcp, public
   main.py            app, CSRF guard, /api/city, serves the built frontend

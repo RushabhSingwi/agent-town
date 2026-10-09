@@ -44,6 +44,11 @@ class LocalProvider:
         self._procs[p.pid] = p
         return f"{p.pid}:{root}"
 
+    def alive(self, sandbox_id: str) -> bool:
+        pid_s = sandbox_id.partition(":")[0]
+        p = self._procs.get(int(pid_s)) if pid_s.isdigit() else None
+        return p is not None and p.poll() is None
+
     def stop(self, sandbox_id: str) -> None:
         pid_s, _, root = sandbox_id.partition(":")
         try:
@@ -81,6 +86,10 @@ class ModalProvider:
             secrets=[modal.Secret.from_dict({**runner_env(run_id, token, allow_shell=True), "IS_SANDBOX": "1"})],
             timeout=settings().run_max_hours * 3600)  # a hard stop, even if the runner hangs
         return sb.object_id
+
+    def alive(self, sandbox_id: str) -> bool:
+        import modal
+        return modal.Sandbox.from_id(sandbox_id).poll() is None
 
     def stop(self, sandbox_id: str) -> None:
         import modal

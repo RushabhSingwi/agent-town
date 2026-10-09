@@ -32,6 +32,7 @@ export class CityView {
   private raf = 0
   private trees: [number, number, number][] = []
   private bottomInset = 0
+  private sideInsets: [number, number] = [0, 0]
   private cam: Pt | null = null
   onSelect: (t: Thing | null, floor: string | null) => void = () => {}
 
@@ -69,14 +70,16 @@ export class CityView {
   setSelected(key: string | null) { this.selected = key }
   setHoverFloor(path: string | null) { this.hoverFloor = path }
   setBottomInset(px: number) { this.bottomInset = px }
+  setSideInsets(left: number, right: number) { this.sideInsets = [left, right] }
 
-  /** Glide so this thing sits in the middle of the space above the card. */
+  /** Glide so this thing sits in the middle of the open space: above the card, between the side panels. */
   focusOn(key: string) {
     const t = this.L?.things.find(x => x.key === key)
     if (!t) return
     const [wx, wy] = iso(t.x + t.w / 2, t.y + t.d / 2, t.height / 2 + 20)
     const top = 70, bottom = innerHeight - this.bottomInset
-    this.cam = [innerWidth / 2 - wx * this.view.zoom, (top + bottom) / 2 - wy * this.view.zoom]
+    const [left, right] = this.sideInsets
+    this.cam = [(left + innerWidth - right) / 2 - wx * this.view.zoom, (top + bottom) / 2 - wy * this.view.zoom]
   }
 
   fit = () => {
@@ -199,9 +202,10 @@ export class CityView {
       const pulse = t.status === 'connected' ? 0.6 + 0.4 * Math.sin(now / 400) : 1
       c.fillStyle = rgb(col, 1, 0.35 * pulse * dim); c.beginPath(); c.arc(cx - 8, cy - 8, 11, 0, Math.PI * 2); c.fill()
       c.fillStyle = rgb(col, dim); c.beginPath(); c.arc(cx - 8, cy - 8, 5.5, 0, Math.PI * 2); c.fill()
-    } else if (t.kind === 'library') {
+    } else if (t.kind === 'library' || t.kind === 'files') {
       c.fillStyle = rgb([250, 244, 228], dim); c.fillRect(cx - 14, cy - 16, 28, 12)
-      c.fillStyle = rgb([120, 80, 50], dim); c.font = '700 8px system-ui'; c.textAlign = 'center'; c.fillText('BOOKS', cx, cy - 7)
+      c.fillStyle = rgb([120, 80, 50], dim); c.font = '700 8px system-ui'; c.textAlign = 'center'
+      c.fillText(t.kind === 'files' ? 'FILES' : 'BOOKS', cx, cy - 7)
     } else if (t.kind === 'shared' || t.sub === 'shared') {
       c.strokeStyle = rgb([60, 50, 40], dim); c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx, cy - 26); c.stroke()
       const wave = Math.sin(now / 300) * 2

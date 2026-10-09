@@ -10,7 +10,10 @@ public address, and the same code works on any provider.
 """
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
+
+import httpx
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -31,6 +34,9 @@ router = APIRouter(tags=["runs"])
 ACTIVE = ("starting", "ready", "busy")
 BOOT_GRACE = timedelta(minutes=10)   # the first Modal run builds the image
 SILENCE = timedelta(minutes=2)       # a running sandbox polls every second; this long quiet = gone
+EXIT_CHECK = timedelta(seconds=15)   # a box still "starting" after this: ask the provider if it died
+_checked: dict[int, float] = {}      # run id -> when we last asked (don't ask on every UI poll)
+_reachable_until = 0.0
 FROM_SANDBOX = {"text", "tool", "tool_result", "done", "status", "error"}
 MAX_EVENT = 100_000
 
@@ -75,6 +81,15 @@ def _reap(db: Session, r: Run) -> None:
         _end(db, r, "stopped", "Reached the maximum run length")
     elif r.status == "starting" and now - _utc(r.created_at) > BOOT_GRACE:
         _end(db, r, "error", "The sandbox never started")
+    elif r.status == "starting" and r.sandbox_id and now - _utc(r.created_at) > EXIT_CHECK \
+            and time.monotonic() - _checked.get(r.id, 0) > 10:
+        _checked[r.id] = time.monotonic()
+        try:
+            gone = not sandbox.provider(r.provider).alive(r.sandbox_id)
+        except Exception:  # noqa: BLE001  (can't tell: leave it to BOOT_GRACE)
+            gone = False
+        if gone:  # it exited before it ever checked in: almost always it couldn't reach us
+            _end(db, r, "error", f"The sandbox stopped before it could reach Agent Town at {settings().public_url}")
     elif r.status != "starting" and now - _utc(r.last_seen_at) > SILENCE:
         _end(db, r, "error", "The sandbox stopped responding")
 
@@ -85,6 +100,24 @@ def own_run(db: Session, user: User, run_id: int) -> Run:
         raise HTTPException(404, "No such run")
     _reap(db, r)
     return r
+
+
+def reachable_problem() -> str | None:
+    """A sandbox calls us back at public_url. If that doesn't answer (a stopped tunnel, a wrong
+    URL), say so now instead of letting the person watch "starting" for minutes."""
+    global _reachable_until
+    if settings().sandbox_provider == "local" or time.monotonic() < _reachable_until:
+        return None
+    url = settings().public_url.rstrip("/") + "/api/health"
+    try:
+        ok = httpx.get(url, timeout=5, headers={"User-Agent": "agent-town-selfcheck"}).json().get("ok") is True
+    except (httpx.HTTPError, ValueError, AttributeError):
+        ok = False
+    if not ok:
+        return (f"Sandboxes reach Agent Town at {settings().public_url}, but nothing answers there. "
+                "If that's a tunnel (ngrok), restart it and update AGENTTOWN_PUBLIC_URL.")
+    _reachable_until = time.monotonic() + 60
+    return None
 
 
 def _launch(make_session: sessionmaker, run_id: int, token: str) -> None:
@@ -120,6 +153,9 @@ def start_run(agent_id: int, bg: BackgroundTasks, user: User = Depends(require_u
     m = build_manifest(db, a)
     if m["model"] is None:
         raise HTTPException(422, "Add a model key or subscription first (your @username → Models)")
+    problem = reachable_problem()
+    if problem:
+        raise HTTPException(503, problem)
     token, token_hash = new_run_token()
     r = Run(agent_id=a.id, owner_id=user.id, credential_id=m["model"]["credential_id"],
             provider=settings().sandbox_provider, token_hash=token_hash)
@@ -127,6 +163,18 @@ def start_run(agent_id: int, bg: BackgroundTasks, user: User = Depends(require_u
     db.commit()
     bg.add_task(_launch, sessionmaker(bind=db.get_bind(), expire_on_commit=False), r.id, token)
     return run_view(r)
+
+
+@router.get("/api/agents/{agent_id}/runs/active")
+def active_run(agent_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """The agent's running chat, if there is one (null if not). Never starts a sandbox, so the UI
+    can call it whenever someone just looks at an agent."""
+    a = own_agent(db, user, agent_id)
+    for r in db.scalars(select(Run).where(Run.agent_id == a.id, Run.ended_at.is_(None))):
+        _reap(db, r)
+        if r.ended_at is None:
+            return run_view(r)
+    return None
 
 
 @router.get("/api/runs/{run_id}")

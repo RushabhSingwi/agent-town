@@ -6,6 +6,7 @@ users ─┬─ sessions                 browser logins (only a hash of the cook
        ├─ agents ─┬─ agent_files    the agent's markdown: AGENT.md plus any knowledge files
        │          └─ agent_tool_grants ──┐  which tools this agent may use
        ├─ mcp_connections ─ mcp_tools ◄──┘  a user's MCP servers and the tools they expose
+       ├─ shared_files              knowledge every one of the user's agents can read (private)
        ├─ public_shares             what a user put in the public district
        └─ runs ─ run_events         an agent running in its own sandbox, and what it said and did
 """
@@ -132,6 +133,24 @@ class AgentFile(Base):
         self.content = content
         self.lines = content.count("\n") + (0 if content.endswith("\n") or not content else 1)
         self.bytes = len(content.encode())
+
+
+class SharedFile(Base):
+    """A file all of its owner's agents can read: a playbook or "about us" that several agents
+    use, kept once instead of copied into each. Private, like the agents themselves.
+    In a run it's written at its own path, next to the agent's own files (which win on a clash)."""
+    __tablename__ = "shared_files"
+    __table_args__ = (UniqueConstraint("owner_id", "path"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    lines: Mapped[int] = mapped_column(Integer)
+    bytes: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+    set_content = AgentFile.set_content
 
 
 class McpConnection(Base):

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import views
-from .models import Agent, McpConnection, ModelCredential, PublicShare
+from .models import Agent, McpConnection, ModelCredential, PublicShare, SharedFile
 
 
 DEFAULT_MODEL = {"anthropic": "claude-sonnet-5-5", "openai": ""}  # "": the provider's CLI default
@@ -56,6 +56,9 @@ def build_manifest(db: Session, a: Agent) -> dict:
                   "description": a.description, "frontmatter": meta},
         "instructions": body.strip(),
         "files": [views.file_full(f) for f in a.files],
+        # the owner's shared files: every one of their agents gets these
+        "shared": [{"path": f.path, "lines": f.lines, "content": f.content} for f in db.scalars(
+            select(SharedFile).where(SharedFile.owner_id == a.owner_id).order_by(SharedFile.path))],
         "tools": tools,
         "public": public,
     }

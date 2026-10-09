@@ -9,7 +9,7 @@ import type { City, Connection, Share, Status } from '../api'
 
 export type RGB = [number, number, number]
 export type Floor = { h: number; path: string }
-export type ThingKind = 'agent' | 'shared' | 'library' | 'station'
+export type ThingKind = 'agent' | 'shared' | 'library' | 'station' | 'files'
 export type Thing = {
   key: string; kind: ThingKind; id: number
   x: number; y: number; w: number; d: number
@@ -93,9 +93,10 @@ export function layout(city: City): Layout {
     districts.push(d)
     x += d.w + 2
 
-    // your private district
+    // your private district, with your shared files as its own building
     const agents = city.agents
-    const g = grid(agents.length, 2, 2)
+    const files = city.shared_files ?? []
+    const g = grid(agents.length + (files.length ? 1 : 0), 2, 2)
     const pd: District = { kind: 'private', x0: x, y0, w: g.cols * CELL + 1, h: g.rows * CELL + 1,
       label: `@${city.me.username}'s district · private`, empty: [] }
     agents.forEach((a, i) => {
@@ -105,7 +106,12 @@ export function layout(city: City): Layout {
       things.push({ key: `agent:${a.id}`, kind: 'agent', id: a.id, x: p.x, y: p.y, w: size, d: size,
         ...s, roof: hex(a.color), label: a.name, sub: a.share_id ? 'shared' : undefined })
     })
-    pd.empty = emptyLots(x, y0, g.cols, g.rows, agents.length)
+    if (files.length) {
+      const p = place(x, y0, g.cols, agents.length, 3)
+      things.push({ key: 'files', kind: 'files', id: 0, x: p.x, y: p.y, w: 3, d: 3, ...stack(files),
+        roof: [92, 112, 140], label: 'Shared files', sub: `${files.length} files, all your agents` })
+    }
+    pd.empty = emptyLots(x, y0, g.cols, g.rows, agents.length + (files.length ? 1 : 0))
     districts.push(pd)
     x += pd.w + 3
 
