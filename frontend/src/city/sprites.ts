@@ -632,3 +632,43 @@ export function drawFountain(p: Paint, now: number) {
     c.beginPath(); c.ellipse(24, 21, 3 + k * 9, 1.5 + k * 4, 0, 0, 7); c.stroke()
   }
 }
+
+// ---------- couriers: how an app's work travels to an agent ----------
+// Drawn facing right with the ground at y = 0; the caller flips them for left.
+
+export type Vehicle = 'horse' | 'cart' | 'boat'
+
+export function drawHorse(p: Paint, color: RGB, step: number, rider = true) {
+  const coat: RGB = [128, 84, 52], dark: RGB = [70, 46, 30]
+  const k = step % 2
+  p.shadow(0, 0, 9, 2)
+  p.box(-7, -6 - k, 2, 6 + k, dark); p.box(-4, -6 + k, 2, 6 - k, dark)          // legs, trotting
+  p.box(3, -6 + k, 2, 6 - k, dark); p.box(6, -6 - k, 2, 6 + k, dark)
+  p.box(-8, -12, 16, 7, coat)                                                   // body
+  p.box(6, -17, 4, 8, coat); p.box(8, -19, 6, 4, coat)                          // neck, head
+  p.rect(12, -18, 1, 1, [20, 16, 16]); p.rect(6, -18, 2, 6, dark)               // eye, mane
+  p.rect(-10, -12 + k, 2, 6, dark)                                              // tail
+  if (!rider) return
+  p.box(-4, -14, 7, 4, color)                                                   // saddlebag in the app's colour
+  p.box(-2, -22, 5, 8, [60, 90, 150])                                           // rider
+  p.box(-2, -26, 5, 4, p.t.skin[1])
+  p.rect(-3, -27, 7, 2, [90, 60, 40])                                           // hat brim
+}
+
+export function drawCart(p: Paint, color: RGB, step: number) {
+  p.c.save(); p.c.translate(7, 0); drawHorse(p, color, step, false); p.c.restore()
+  p.box(-16, -11, 14, 7, p.t.wood)                                              // the cart
+  p.box(-15, -15, 12, 4, color, 0.9)                                            // its load
+  p.circle(-13, -3, 3, [60, 44, 32]); p.circle(-5, -3, 3, [60, 44, 32])
+  p.rect(-2, -9, 4, 1, p.t.dark)
+}
+
+export function drawBoat(p: Paint, color: RGB, now: number) {
+  const bob = Math.round(Math.sin(now / 400) * 1)
+  p.c.fillStyle = 'rgba(255,255,255,0.5)'; p.c.fillRect(-14, 1, 4, 1); p.c.fillRect(-18, 2, 3, 1)   // wake
+  p.box(-11, -4 + bob, 22, 5, p.t.wood)                                         // hull
+  p.rect(-9, -1 + bob, 18, 1, p.t.wood, 0.75)
+  p.box(-1, -22 + bob, 2, 18, p.t.dark)                                         // mast
+  p.tri(1, -21 + bob, 10, 15, color)                                            // sail in the app's colour
+  p.rect(-1, -24 + bob, 5, 2, [230, 70, 70])                                    // pennant
+}

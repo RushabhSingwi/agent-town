@@ -10,8 +10,9 @@ from app.main import app
 def test_settings(monkeypatch):
     """Tests must not depend on a developer's backend/.env (which may say modal, or a tunnel URL)."""
     from app.config import settings
-    for k, v in {"sandbox_provider": "local", "public_url": "http://127.0.0.1:8000",
-                 "allow_subscription_tokens": True, "allow_private_mcp_hosts": False}.items():
+    for k, v in {"sandbox_provider": "local", "public_url": "http://127.0.0.1:8000", "app_url": "http://127.0.0.1:8000",
+                 "allow_subscription_tokens": True, "allow_private_mcp_hosts": False,
+                 "google_client_id": "", "google_client_secret": ""}.items():
         monkeypatch.setattr(settings(), k, v)
 
 

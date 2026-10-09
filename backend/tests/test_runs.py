@@ -231,3 +231,29 @@ def test_deleting_the_account_stops_its_sandboxes(make_user, fake_sandbox):
     run_id = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
     assert alice.request("DELETE", "/api/account", json={"password": "correct horse battery"}).status_code == 200
     assert fake_sandbox.stopped == [f"fake-{run_id}"]
+
+
+def test_changing_apps_or_team_ends_the_open_chat(make_user, fake_sandbox, monkeypatch):
+    from app import mcp_client
+    from app.routers import mcp as mcp_router
+    monkeypatch.setattr(mcp_router.mcp_client, "check", lambda *a, **k: mcp_client.CheckResult("connected", "ok", "s", "1", [{"name": "t"}]))
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    conn = alice.post("/api/mcp", json={"name": "mail", "url": "https://mail.example/mcp"}).json()
+    run_id = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
+    alice.put(f"/api/agents/{a['id']}/grants", json={"grants": [{"connection_id": conn["id"], "tool_name": None}]})
+    r = alice.get(f"/api/runs/{run_id}").json()
+    assert r["ended_at"] and "apps changed" in r["detail"]
+    run2 = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
+    alice.put(f"/api/agents/{a['id']}/grants", json={"grants": [{"connection_id": conn["id"], "tool_name": None}]})   # no change
+    assert alice.get(f"/api/runs/{run2}").json()["ended_at"] is None
+
+
+def test_awake_lists_only_your_open_runs(make_user, fake_sandbox):
+    alice, bob = make_user("alice"), make_user("bob")
+    a = setup_agent(alice)
+    run_id = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
+    assert alice.get("/api/runs/active").json() == [{"agent_id": a["id"], "run_id": run_id, "status": "starting"}]
+    assert bob.get("/api/runs/active").json() == []
+    alice.delete(f"/api/runs/{run_id}")
+    assert alice.get("/api/runs/active").json() == []

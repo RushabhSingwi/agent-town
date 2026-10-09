@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import views
+from .config import settings
 from .models import DEFINITION, Agent, McpConnection, ModelCredential, PublicShare, SharedFile
 
 
@@ -22,9 +23,12 @@ def granted_tools(a: Agent) -> list[dict]:
         c: McpConnection = g.connection
         usable = c.status == "connected" or c.status == "needs_sandbox"
         names = [t.name for t in c.tools] if g.tool_name is None else [g.tool_name]
+        hosted = c.transport == "hosted"          # Gmail, Calendar: served by Agent Town, reached with the run token
         tools.append({
-            "connection_id": c.id, "connection": c.name, "transport": c.transport,
-            "url": c.url, "command": c.command, "status": c.status, "usable": usable,
+            "connection_id": c.id, "connection": c.name, "transport": "http" if hosted else c.transport,
+            "url": f"{settings().public_url.rstrip('/')}/api/runtime/mcp/{c.id}" if hosted else c.url,
+            "hosted": hosted, "server": c.app if hosted else None,     # hosted: mcp__gmail__…, mcp__calendar__…
+            "command": c.command, "status": c.status, "usable": usable,
             "tools": [{"name": t.name, "description": t.description, "input_schema": t.input_schema}
                       for t in c.tools if t.name in names],
             "all_tools": g.tool_name is None,

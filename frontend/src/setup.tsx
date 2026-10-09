@@ -2,7 +2,7 @@
 // tell it about you, connect the apps it should use, and pick which AI account it thinks with.
 
 import { useEffect, useState } from 'react'
-import { api, type City, type Connection, type Credential, type MyAgent } from './api'
+import { api, type City, type Connection, type Credential, type GoogleStatus, type MyAgent } from './api'
 import { APPS, connectionFor, suggestedApps, type App } from './connectors'
 import { Err, Modal, msg } from './ui'
 
@@ -21,11 +21,11 @@ function parse(text: string): Record<string, string> {
 const write = (qs: string[], a: Record<string, string>) =>
   '# About me\n\n' + qs.filter(q => a[q]?.trim()).map(q => `## ${q}\n\n${a[q].trim()}\n`).join('\n')
 
-export function SetupModal({ agent, city, reload, onClose, onChat, onAccount, onAdvanced }: {
+export function SetupModal({ agent, city, reload, onClose, onChat, onAccount, onAdvanced, initialStep = 0 }: {
   agent: MyAgent; city: City; reload: () => Promise<void>; onClose: () => void
-  onChat: () => void; onAccount: () => void; onAdvanced: () => void
+  onChat: () => void; onAccount: () => void; onAdvanced: () => void; initialStep?: number
 }) {
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState(initialStep)
   const [questions, setQuestions] = useState<string[] | null>(null)
   const [market, setMarket] = useState<string[] | undefined>(undefined)
   const [answers, setAnswers] = useState<Record<string, string>>(() => parse(agent.files.find(f => f.path === FILE)?.content ?? ''))
@@ -92,6 +92,8 @@ export function AppList({ city, agent, suggested, reload, onAdvanced }: {
 }) {
   const [all, setAll] = useState(!suggested?.length)
   const [error, setError] = useState<string | null>(null)
+  const [google, setGoogle] = useState<GoogleStatus | null>(null)
+  useEffect(() => { api.googleStatus().then(setGoogle, () => setGoogle(null)) }, [city])
   const top = suggested?.length ? suggested : APPS
   const rest = APPS.filter(a => !top.includes(a))
   const run = async (fn: () => Promise<unknown>) => {
@@ -100,18 +102,34 @@ export function AppList({ city, agent, suggested, reload, onAdvanced }: {
   }
   return (
     <div className="apps">
-      {top.map(a => <AppRow key={a.key} app={a} city={city} agent={agent} run={run} onAdvanced={onAdvanced} />)}
+      {top.map(a => <AppRow key={a.key} app={a} city={city} agent={agent} run={run} onAdvanced={onAdvanced} google={google} />)}
       {rest.length > 0 && (all
-        ? rest.map(a => <AppRow key={a.key} app={a} city={city} agent={agent} run={run} onAdvanced={onAdvanced} />)
+        ? rest.map(a => <AppRow key={a.key} app={a} city={city} agent={agent} run={run} onAdvanced={onAdvanced} google={google} />)
         : <button className="linklike-btn" onClick={() => setAll(true)}>More apps</button>)}
+      {!agent && google && google.accounts.length > 0 && <div className="google-accounts">
+        <h3>Google accounts</h3>
+        {google.accounts.map(g => <div key={g.id} className="app-row">
+          <span className="app-icon" aria-hidden="true">G</span>
+          <div className="grow"><b>{g.email}</b><div className={`meta ${g.status === 'connected' ? 'ok' : 'warn'}`}>
+            {g.status === 'connected' ? `Connected: ${g.apps.map(x => x === 'gmail' ? 'Gmail' : 'Calendar').join(' and ')}` : 'Signed out: connect it again'}</div></div>
+          <button onClick={() => { if (confirm(`Disconnect ${g.email}? Agents lose access to its Gmail and Calendar.`)) run(() => api.disconnectGoogle(g.id)) }}>Disconnect</button>
+        </div>)}
+      </div>}
       <Err error={error} />
       <p className="hint">Using something else? <a href="#" onClick={e => { e.preventDefault(); onAdvanced() }}>Connect any app that speaks MCP</a> (advanced).</p>
     </div>
   )
 }
 
-function AppRow({ app, city, agent, run, onAdvanced }: {
+/** Off to Google's consent screen; when we come back, reopen "Make it your own" on the Apps step. */
+function signInWithGoogle(app: 'gmail' | 'calendar', agent?: MyAgent) {
+  try { if (agent) sessionStorage.setItem('agenttown.resumeSetup', String(agent.id)) } catch { /* private mode */ }
+  window.location.href = `/api/connect/google/start?apps=${app}${agent ? `&agent=${agent.id}` : ''}`   // it gets access once connected
+}
+
+function AppRow({ app, city, agent, run, onAdvanced, google }: {
   app: App; city: City; agent?: MyAgent; run: (fn: () => Promise<unknown>) => Promise<void>; onAdvanced: () => void
+  google: GoogleStatus | null
 }) {
   const [token, setToken] = useState('')
   const [open, setOpen] = useState(false)
@@ -121,12 +139,20 @@ function AppRow({ app, city, agent, run, onAdvanced }: {
     ? agent.grants.filter(g => g.connection_id !== conn.id)
     : [...agent.grants.filter(g => g.connection_id !== conn.id), { connection_id: conn.id, tool_name: null }]))
 
-  let action
-  if (conn) {
+  let action, note = ''
+  if (conn && conn.status === 'auth_required' && app.how === 'google') {
+    action = <button className="primary" onClick={() => signInWithGoogle(app.google!, agent)}>Connect again</button>
+    note = ' Its Google sign-in expired.'
+  } else if (conn) {
     const ok = conn.status === 'connected' || conn.status === 'needs_sandbox'
     action = agent
       ? <label className="check"><input type="checkbox" checked={granted} onChange={toggle} /> Let it use {app.name}</label>
       : <span className={`meta ${ok ? 'ok' : 'warn'}`}>{ok ? 'Connected' : conn.status_detail || 'Needs attention'}</span>
+  } else if (app.how === 'google') {
+    const here = typeof window !== 'undefined' ? window.location.origin : ''
+    if (!google?.configured) { action = <span className="meta soon">Not set up yet</span>; note = " This server's owner hasn't added a Google client yet." }
+    else if (google.app_url !== here) { action = <a className="button" href={google.app_url}>Open {new URL(google.app_url).host}</a>; note = ` Google sends you back to ${google.app_url}, so connect from there.` }
+    else action = <button className="primary" onClick={() => signInWithGoogle(app.google!, agent)}>Connect</button>
   } else if (app.how === 'token') {
     action = <button className="primary" onClick={() => setOpen(!open)}>Connect</button>
   } else if (app.how === 'custom') {
@@ -138,7 +164,7 @@ function AppRow({ app, city, agent, run, onAdvanced }: {
   return (
     <div className={`app-row${app.how === 'soon' && !conn ? ' muted' : ''}`}>
       <span className="app-icon" aria-hidden="true">{app.icon}</span>
-      <div className="grow"><b>{app.name}</b><div className="meta wrap">Lets it {app.does}.{app.how === 'soon' && !conn && ' One-click sign-in is on its way.'}</div></div>
+      <div className="grow"><b>{app.name}</b><div className="meta wrap">Lets it {app.does}.{app.how === 'soon' && !conn && ' One-click sign-in is on its way.'}{note}</div></div>
       {action}
       {open && !conn && <div className="app-connect">
         <p className="hint">{app.tokenHelp} <a href={app.tokenLink} target="_blank" rel="noreferrer">Open {app.name}</a></p>

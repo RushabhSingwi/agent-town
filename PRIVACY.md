@@ -57,16 +57,22 @@ it. If that happens, we'll tell you when we're allowed to.
 
 ## Google data
 
-Agent Town doesn't connect to Google accounts yet. When it does, and if you connect Gmail or Google
-Calendar:
+If you connect Gmail or Google Calendar:
 
 - Agent Town's use and transfer of information received from Google APIs will adhere to the
   [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
   including the Limited Use requirements.
-- Your agents will use that data only to do what you ask them to in Agent Town.
-- We won't use it for advertising, won't sell it, won't let people read it except with your consent
-  or for security or legal reasons, and won't use it to train AI models.
-- You'll be able to disconnect at any time, which deletes the tokens we stored.
+- **What we ask for:** reading your email, writing drafts, and reading and adding calendar events.
+  Agents can't send email or invite people; you do that yourself.
+- **Where it goes:** your Google tokens stay encrypted on our server and never go into an agent's
+  sandbox. When an agent you allowed uses Gmail or Calendar, our server makes the call and passes
+  the result (for example an email's text) to that agent's chat, which goes to your AI provider as
+  described above.
+- Your agents use that data only to do what you ask them to in Agent Town.
+- We don't use it for advertising, don't sell it, don't let people read it except with your consent
+  or for security or legal reasons, and don't use it to train AI models.
+- **Disconnect any time** under Connect apps: we revoke access at Google and delete the tokens we
+  stored. Deleting your account does the same.
 
 ## How long we keep it
 

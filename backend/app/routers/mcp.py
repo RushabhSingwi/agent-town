@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import mcp_client, views
+from .. import google, mcp_client, views
 from ..auth import require_user
 from ..config import settings
 from ..db import get_db
-from ..models import Agent, AgentToolGrant, McpConnection, McpTool, User
+from ..models import Agent, AgentToolGrant, McpConnection, McpTool, OAuthAccount, User
 from ..schemas import McpIn, McpPatch
 from ..security import decrypt, encrypt
 
@@ -33,6 +33,13 @@ def run_check(db: Session, c: McpConnection) -> None:
     """Handshake with the server and store what it says. stdio servers only ever start
     inside an agent's sandbox, so they can't be checked from here."""
     c.last_checked_at = datetime.now(timezone.utc)
+    if c.transport == "hosted":                       # Gmail/Calendar: as good as the Google sign-in behind it
+        acct = db.get(OAuthAccount, c.oauth_account_id)
+        ok = acct is not None and acct.status == "connected"
+        c.status, c.status_detail = ("connected", f"Signed in as {acct.email}") if ok else ("auth_required", "Connect Google again")
+        google.sync_tools(c)
+        db.commit()
+        return
     if c.transport == "stdio":
         c.status, c.status_detail = "needs_sandbox", "stdio servers start inside the agent's sandbox"
         db.commit()

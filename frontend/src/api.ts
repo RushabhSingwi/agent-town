@@ -27,7 +27,8 @@ export type Credential = {
 
 export type Status = 'unknown' | 'connected' | 'auth_required' | 'error' | 'needs_sandbox'
 export type Connection = {
-  id: number; name: string; transport: 'http' | 'stdio'; url: string | null; command: string | null
+  id: number; name: string; transport: 'http' | 'stdio' | 'hosted'; url: string | null; command: string | null
+  app: string; oauth_account_id: number | null
   has_auth: boolean; status: Status; status_detail: string; server_name: string; server_version: string
   last_checked_at: string | null; tools: { name: string; description: string }[]
   granted_to: { agent_id: number; agent: string; tool_name: string | null }[]
@@ -66,6 +67,11 @@ export type ImportPlan = {
 export type MarketAgent = {
   slug: string; name: string; description: string; tags: string[]; author: string; color: string; building: string
   tools: string[]; team: string[]; ask: string[]; files: number; lines: number; installed: boolean
+}
+
+export type GoogleStatus = {
+  configured: boolean; app_url: string
+  accounts: { id: number; email: string; status: 'connected' | 'expired'; apps: ('gmail' | 'calendar')[] }[]
 }
 
 export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[]; shared_files: SharedFile[] }
@@ -132,9 +138,13 @@ export const api = {
   doImport: (body: { files: ImportFile[]; agents: { source: string; name: string; files: string[]; team: string[] }[]; shared: string[] }) =>
     call<{ created: MyAgent[]; updated: MyAgent[]; shared: number }>('POST', '/api/import', body),
 
+  awake: () => call<{ agent_id: number; run_id: number; status: RunStatus }[]>('GET', '/api/runs/active'),
   activeRun: (agentId: number) => call<Run | null>('GET', `/api/agents/${agentId}/runs/active`),
   market: () => call<MarketAgent[]>('GET', '/api/marketplace'),
   installMarket: (slug: string) => call<{ agent: MyAgent; added: string[] }>('POST', `/api/marketplace/${slug}/install`),
+
+  googleStatus: () => call<GoogleStatus>('GET', '/api/connect/google'),
+  disconnectGoogle: (id: number) => call('DELETE', `/api/connect/google/${id}`),
 
   startRun: (agentId: number) => call<Run>('POST', `/api/agents/${agentId}/runs`),
   runEvents: (id: number, after: number) => call<{ run: Run; events: RunEvent[] }>('GET', `/api/runs/${id}/events?after=${after}`),

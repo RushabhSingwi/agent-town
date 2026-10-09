@@ -7,6 +7,7 @@ users ─┬─ sessions                 browser logins (only a hash of the cook
        │          ├─ agent_team     which of the owner's other agents it may call (its sub-agents)
        │          └─ agent_tool_grants ──┐  which tools this agent may use
        ├─ mcp_connections ─ mcp_tools ◄──┘  a user's MCP servers and the tools they expose
+       ├─ oauth_accounts            accounts signed in with OAuth (Google): their tokens, encrypted
        ├─ shared_files              knowledge every one of the user's agents can read (private)
        ├─ public_shares             what a user put in the public district
        └─ runs ─ run_events         an agent running in its own sandbox, and what it said and did
@@ -168,6 +169,27 @@ class SharedFile(Base):
     set_content = AgentFile.set_content
 
 
+class OAuthAccount(Base):
+    """An account someone signed into with OAuth, like Composio's "connected account": which provider,
+    which of their accounts, which scopes they allowed, and the tokens (encrypted). Agent Town hosts
+    the tools for it itself, so the tokens never go into a sandbox.
+    status: connected | expired (refreshing failed: they need to sign in again)"""
+    __tablename__ = "oauth_accounts"
+    __table_args__ = (UniqueConstraint("owner_id", "provider", "subject"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))          # google
+    subject: Mapped[str] = mapped_column(String(255))          # the provider's id for the account
+    email: Mapped[str] = mapped_column(String(320), default="")
+    scopes: Mapped[str] = mapped_column(Text, default="")      # space-separated, as granted
+    refresh_token_enc: Mapped[str] = mapped_column(Text, default="")
+    access_token_enc: Mapped[str] = mapped_column(Text, default="")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="connected")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class McpConnection(Base):
     __tablename__ = "mcp_connections"
     __table_args__ = (UniqueConstraint("owner_id", "name"),)
@@ -175,10 +197,13 @@ class McpConnection(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(60))
-    transport: Mapped[str] = mapped_column(String(10))       # "http" | "stdio"
+    transport: Mapped[str] = mapped_column(String(10))       # "http" | "stdio" | "hosted"
     url: Mapped[str | None] = mapped_column(Text)            # http
     command: Mapped[str | None] = mapped_column(Text)        # stdio: runs in the sandbox, later
     auth_header_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted Authorization value
+    # transport "hosted": tools Agent Town serves itself (Gmail, Calendar) for this signed-in account
+    oauth_account_id: Mapped[int | None] = mapped_column(ForeignKey("oauth_accounts.id", ondelete="CASCADE"))
+    app: Mapped[str] = mapped_column(String(30), default="")  # hosted: gmail | calendar
     # unknown | connected | auth_required | error | needs_sandbox
     status: Mapped[str] = mapped_column(String(20), default="unknown")
     status_detail: Mapped[str] = mapped_column(Text, default="")

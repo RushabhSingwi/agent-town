@@ -61,7 +61,8 @@ def clip(v) -> str:
 
 
 def server_name(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") or "server"
+    """Lowercase, like the names people give MCP servers in Claude Code: "Gmail" -> mcp__gmail__…"""
+    return re.sub(r"[^a-z0-9_-]+", "_", name.lower()).strip("_") or "server"
 
 
 def write_files(m: dict) -> list[str]:
@@ -128,8 +129,10 @@ def servers(m: dict, auth_headers: dict, tools: list[dict] | None = None) -> lis
     for t in m["tools"] if tools is None else tools:
         if not t["usable"]:
             continue
-        s = {"name": server_name(t["connection"]), "transport": t["transport"], "url": t["url"],
-             "command": t["command"], "auth": auth_headers.get(str(t["connection_id"])),
+        # hosted (Gmail, Calendar): Agent Town serves those tools itself; this run's token gets in
+        auth = f"Bearer {TOKEN}" if t.get("hosted") else auth_headers.get(str(t["connection_id"]))
+        s = {"name": server_name(t.get("server") or t["connection"]), "transport": t["transport"], "url": t["url"],
+             "command": t["command"], "auth": auth,
              "tools": None if t["all_tools"] else [x["name"] for x in t["tools"]]}
         out.append(s)
     return out

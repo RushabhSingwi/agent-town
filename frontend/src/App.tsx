@@ -22,6 +22,25 @@ export default function App() {
   const [modal, setModal] = useState<'login' | 'signup' | 'add' | 'agent' | 'tool' | 'account' | 'apps' | null>(null)
   const [setupId, setSetupId] = useState<number | null>(null)   // "Make it your own" for this agent
   const [menu, setMenu] = useState(false)
+  const [setupStep, setSetupStep] = useState(0)
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // back from Google's consent screen: say how it went, and pick up "Make it your own" where it was
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const connected = q.get('connected'), failed = q.get('connect_error')
+    if (!connected && !failed) return
+    const names = (connected ?? '').split(',').map(a => a === 'gmail' ? 'Gmail' : a === 'calendar' ? 'Google Calendar' : '').filter(Boolean)
+    setNotice(failed ? { ok: false, text: failed } : { ok: true, text: names.length ? `Connected ${names.join(' and ')}.` : 'Google didn\'t grant any access.' })
+    window.history.replaceState(null, '', window.location.pathname)
+    try {
+      const resume = sessionStorage.getItem('agenttown.resumeSetup')
+      sessionStorage.removeItem('agenttown.resumeSetup')
+      if (resume) { setSetupStep(1); setSetupId(Number(resume)) }
+    } catch { /* private mode */ }
+    const t = window.setTimeout(() => setNotice(null), 8000)
+    return () => clearTimeout(t)
+  }, [])
   const [refit, setRefit] = useState(true)
   const [theme, setTheme] = useState<ThemeName>(() => {
     try { const t = localStorage.getItem('agenttown.theme'); if (t && t in THEMES) return t as ThemeName } catch { /* private mode */ }
@@ -43,6 +62,17 @@ export default function App() {
   }, [theme])
 
   useEffect(() => { viewRef.current?.setPlayerName(city?.me ? `@${city.me.username}` : 'you') }, [city?.me])
+
+  // who's awake: lanterns, z's and NPCs on the map follow every agent's run, not just the open chat
+  const signedIn = !!city?.me
+  useEffect(() => {
+    if (!signedIn) return
+    let stop = false
+    const tick = () => api.awake().then(a => { if (!stop) viewRef.current?.setStatuses(a) }, () => {})
+    tick()
+    const t = window.setInterval(tick, 6000)
+    return () => { stop = true; clearInterval(t) }
+  }, [signedIn, city])
 
   const L = useMemo(() => (city ? layout(city) : null), [city])
   useEffect(() => {
@@ -91,9 +121,8 @@ export default function App() {
   useEffect(() => {
     const v = viewRef.current
     if (!v || !sel || !(hasCard || hasAgent)) return
-    const wide = innerWidth > 900
-    v.setSideInsets(hasAgent && wide ? 372 : 0, hasAgent && wide ? 432 : 0)
-    v.setBottomInset(hasAgent ? (wide ? 0 : innerHeight * 0.62) : cardRef.current?.offsetHeight ?? 0)
+    v.setSideInsets(0, 0)                                    // talking happens in a dialogue box at the bottom
+    v.setBottomInset(hasAgent ? (document.querySelector('.dialogue') as HTMLElement | null)?.offsetHeight ?? 260 : cardRef.current?.offsetHeight ?? 0)
     v.focusOn(sel.key)
   }, [sel?.key, hasCard, hasAgent]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -140,9 +169,13 @@ export default function App() {
         <div className="controls-hint"><b>W A S D</b> or arrows to walk · <b>Shift</b> to run · <b>E</b> to talk · click the ground to walk there</div>}
       {card && <div ref={cardRef} className="dock">{card}</div>}
       {agent && city && <AgentView key={agent.id} agent={agent} city={city} floor={sel!.floor} reload={reload} onClose={() => setSel(null)}
-        onStatus={s => viewRef.current?.setAgentStatus(agent.id, s)} onSetup={() => setSetupId(agent.id)} />}
-      {setupAgent && city && !modal && <SetupModal agent={setupAgent} city={city} reload={reload} onClose={() => setSetupId(null)}
-        onChat={() => { setSel({ key: `agent:${setupAgent.id}`, floor: null }); setSetupId(null) }}
+        onStatus={s => viewRef.current?.setAgentStatus(agent.id, s)} onTool={server => viewRef.current?.sendCourier(agent.id, server)}
+        onSetup={() => setSetupId(agent.id)} />}
+      {notice && <div className={`notice ${notice.ok ? 'ok' : 'bad'}`} role="status">{notice.text}
+        <button className="x" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {setupAgent && city && !modal && <SetupModal key={`${setupAgent.id}:${setupStep}`} initialStep={setupStep} agent={setupAgent} city={city} reload={reload}
+        onClose={() => { setSetupId(null); setSetupStep(0) }}
+        onChat={() => { setSel({ key: `agent:${setupAgent.id}`, floor: null }); setSetupId(null); setSetupStep(0) }}
         onAccount={() => setModal('account')} onAdvanced={() => setModal('tool')} />}
       {modal === 'apps' && city && <Modal title="Connect your apps" onClose={() => setModal(null)} wide>
         <p className="hint">Connect an app once; then choose, per agent, which ones it may use (in its panel, or in "Make it your own").</p>

@@ -120,6 +120,12 @@ def reachable_problem() -> str | None:
     return None
 
 
+def end_open_runs(db: Session, agent, why: str) -> None:
+    """A sandbox gets its apps and team when it starts; after a change, the next message starts fresh."""
+    for r in db.scalars(select(Run).where(Run.agent_id == agent.id, Run.ended_at.is_(None))):
+        _end(db, r, "stopped", why)
+
+
 def _launch(make_session: sessionmaker, run_id: int, token: str) -> None:
     """After the response is sent: ask the provider for a box. Slow on a cold start, which is
     why POST /runs answers 202 right away and the UI watches the status instead."""
@@ -163,6 +169,17 @@ def start_run(agent_id: int, bg: BackgroundTasks, user: User = Depends(require_u
     db.commit()
     bg.add_task(_launch, sessionmaker(bind=db.get_bind(), expire_on_commit=False), r.id, token)
     return run_view(r)
+
+
+@router.get("/api/runs/active")
+def awake(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Which of your agents are awake right now, and what they're doing. The map polls this."""
+    out = []
+    for r in db.scalars(select(Run).where(Run.owner_id == user.id, Run.ended_at.is_(None))):
+        _reap(db, r)
+        if r.ended_at is None:
+            out.append({"agent_id": r.agent_id, "run_id": r.id, "status": r.status})
+    return out
 
 
 @router.get("/api/agents/{agent_id}/runs/active")
@@ -239,7 +256,7 @@ def runtime_setup(r: Run = Depends(current_run), db: Session = Depends(get_db)):
     headers = {}
     for t in m["tools"] + [t for member in m["team"] for t in member["tools"]]:
         c = db.get(McpConnection, t["connection_id"])
-        if c and c.auth_header_enc:
+        if c and c.auth_header_enc and c.transport != "hosted":
             headers[str(c.id)] = decrypt(c.auth_header_enc)
     return {"run_id": r.id, "manifest": m, "auth_headers": headers,
             "credential": {"provider": cred.provider, "kind": cred.kind, "secret": secret,

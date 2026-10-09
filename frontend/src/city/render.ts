@@ -6,9 +6,10 @@
 // agent and press E to talk to it. Click a building to open it (and walk to its door).
 
 import type { RunStatus } from '../api'
-import { Paint, css, drawBench, drawBubble, drawBuilding, drawBush, drawFlowers, drawFountain, drawHay, drawHouse, drawHouseLive, drawLamp, drawLive, drawNpc,
-  drawRock, drawSignpost, drawStall, drawTree, hash, type Anchors, type NpcPose } from './sprites'
-import { Ground, STATUS_COLOR, T, noise, type Decor, type Layout, type Rect, type Thing } from './layout'
+import { Paint, css, drawBench, drawBoat, drawBubble, drawBuilding, drawBush, drawCart, drawFlowers, drawFountain, drawHay, drawHorse, drawHouse,
+  drawHouseLive, drawLamp, drawLive, drawNpc, drawRock, drawSignpost, drawStall, drawTree, hash, type Anchors, type NpcPose, type Vehicle } from './sprites'
+import { Ground, STATUS_COLOR, T, noise, route, seaLane, type Decor, type Layout, type Rect, type Thing, type Wire } from './layout'
+import type { BuildingStyle } from './kinds'
 import { THEMES, type Theme, type ThemeName } from './themes'
 
 const PAD = 28                       // room above a building's sprite for chimneys, flags, smoke
@@ -21,6 +22,14 @@ const DECOR_SIZE: Record<Decor['kind'], [number, number]> = {
 }
 type Walker = { x: number; y: number; tx: number; ty: number; wait: number; dir: 1 | -1; dist: number }
 type Player = Walker & { target: Pt | null; moving: boolean }
+type Courier = { vehicle: Vehicle; pts: Pt[]; seg: number; along: number; speed: number; color: [number, number, number]; live: boolean; dist: number; dir: 1 | -1 }
+
+// how each kind of app's work travels: mail and calendar by rider, chat and the outside world by boat
+const VEHICLE: Partial<Record<BuildingStyle, Vehicle>> = { stable: 'horse', clocktower: 'horse', signal: 'boat', barn: 'boat' }
+const CARGO: Partial<Record<BuildingStyle, [number, number, number]>> = {
+  stable: [200, 60, 60], clocktower: [240, 200, 80], workshop: [90, 90, 110], archive: [230, 220, 190],
+  signal: [80, 140, 220], well: [70, 130, 200], barn: [180, 60, 50],
+}
 
 export class CityView {
   private ctx: CanvasRenderingContext2D
@@ -44,6 +53,8 @@ export class CityView {
   private bottomInset = 0
   private sideInsets: [number, number] = [0, 0]
   private cam: Pt | null = null
+  private couriers: Courier[] = []
+  private nextTrip = 0
   onSelect: (t: Thing | null, floor: string | null) => void = () => {}
 
   constructor(canvas: HTMLCanvasElement) {
@@ -94,6 +105,63 @@ export class CityView {
   setPlayerName(name: string) { this.playerName = name }
   /** A chat's run changed state: the NPC walks to its door to work, or wanders again. */
   setAgentStatus(agentId: number, s: RunStatus | null) { this.status.set(agentId, s) }
+  /** Everyone's state at once (from /api/runs/active): agents not listed are asleep. */
+  setStatuses(awake: { agent_id: number; status: RunStatus }[]) {
+    const on = new Map(awake.map(a => [a.agent_id, a.status]))
+    for (const t of this.L?.things ?? []) if (t.kind === 'agent') this.status.set(t.id, on.get(t.id) ?? null)
+  }
+
+  /** An agent just used an app's tool (mcp__<server>__…): send that app's courier to it, now. */
+  sendCourier(agentId: number, server: string) {
+    const w = this.L?.wires.find(x => !x.team && x.to.id === agentId && x.to.kind === 'agent' && x.from.server === server)
+    if (w) this.spawn(w, true)
+  }
+
+  private spawn(w: Wire, live: boolean) {
+    const L = this.L!
+    const vehicle = VEHICLE[w.from.style] ?? 'cart'
+    let pts: Pt[]
+    if (vehicle === 'boat') {                          // round the island by sea, the short way
+      const lane = seaLane(L), ring: Pt[] = []
+      for (let i = 1; i < lane.length; i++) {
+        const [a, b] = [lane[i - 1], lane[i]], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]))
+        for (let j = 0; j < n; j++) ring.push([a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n])
+      }
+      const near = (p: Pt) => ring.reduce((bi, q, i) => Math.hypot(q[0] - p[0], q[1] - p[1]) < Math.hypot(ring[bi][0] - p[0], ring[bi][1] - p[1]) ? i : bi, 0)
+      const i = near(w.from.door), j = near(w.to.door), n = ring.length
+      const fwd = (j - i + n) % n, back = (i - j + n) % n
+      pts = []
+      for (let k = 0; k <= Math.min(fwd, back); k++) pts.push(ring[(i + (fwd <= back ? k : -k) + n) % n])
+    } else pts = route(L, w.from, w.to)
+    const tiles = vehicle === 'boat' ? 2.2 : vehicle === 'cart' ? 1.8 : 2.6
+    this.couriers.push({ vehicle, pts: pts.map(([x, y]) => [x * T, y * T] as Pt), seg: 1, along: 0,
+      speed: tiles * T * (live ? 2.4 : 1), color: CARGO[w.from.style] ?? [180, 140, 90], live, dist: 0, dir: 1 })
+  }
+
+  private stepCouriers(dt: number, now: number) {
+    const tools = this.L!.wires.filter(w => !w.team)
+    if (tools.length && now > this.nextTrip && this.couriers.filter(c => !c.live).length < Math.min(5, tools.length)) {
+      this.spawn(tools[Math.floor(Math.random() * tools.length)], false)
+      this.nextTrip = now + 5000 + Math.random() * 9000          // now and then, so the roads feel used
+    }
+    for (const c of this.couriers) {
+      let left = c.speed * dt
+      while (left > 0 && c.seg < c.pts.length) {
+        const [a, b] = [c.pts[c.seg - 1], c.pts[c.seg]]
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]), rest = len - c.along
+        if (Math.abs(b[0] - a[0]) > 0.5) c.dir = b[0] > a[0] ? 1 : -1
+        if (left < rest) { c.along += left; c.dist += left; left = 0 }
+        else { left -= rest; c.dist += rest; c.seg++; c.along = 0 }
+      }
+    }
+    this.couriers = this.couriers.filter(c => c.seg < c.pts.length)
+  }
+
+  private courierAt(c: Courier): Pt {
+    const [a, b] = [c.pts[c.seg - 1], c.pts[c.seg]]
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+    return [a[0] + (b[0] - a[0]) * c.along / len, a[1] + (b[1] - a[1]) * c.along / len]
+  }
   setSelected(key: string | null) { this.selected = key }
   setHoverFloor(_path: string | null) {}
   setBottomInset(px: number) { this.bottomInset = px }
@@ -455,6 +523,7 @@ export class CityView {
     if (!this.L || !this.ground) return
 
     this.stepPlayer(dt)
+    this.stepCouriers(dt, now)
     this.near = this.findNear()
     const pl = this.player!
     if (this.follow) {                                   // keep you in the middle of the open space
@@ -502,6 +571,25 @@ export class CityView {
         const paint = new Paint(c, th)
         if (t.spec && s.anchors) drawHouseLive(paint, t.spec, s.anchors, now, st === 'busy')
         else drawLive(paint, t.style, t.color, now, false)
+        if (t.kind === 'agent') {
+          // a lantern by the door: dark while it sleeps, flickering as it wakes, lit while it's up
+          const lx = (t.door[0] - t.x) * T + 9, ly = bh - 18
+          c.fillStyle = css(th.dark); c.fillRect(lx, ly, 2, 14); c.fillRect(lx - 1, ly - 4, 4, 4)
+          const awake = st === 'ready' || st === 'busy' || st === 'starting'
+          if (awake) {
+            const k = st === 'starting' ? (Math.sin(now / 60) > 0 ? 1 : 0.35) : 0.85 + 0.15 * Math.sin(now / 300)
+            c.fillStyle = `rgba(255,214,110,${0.3 * k})`; c.beginPath(); c.arc(lx + 1, ly - 2, 7, 0, 7); c.fill()
+            c.fillStyle = `rgba(255,226,140,${k})`; c.fillRect(lx, ly - 3, 2, 2)
+          } else {                                              // asleep: z z z drifting off the roof
+            for (let i = 0; i < 3; i++) {
+              const ph = (now / 2400 + i / 3 + t.id * 0.37) % 1
+              c.globalAlpha = (dim ? 0.3 : 0.75) * Math.sin(ph * Math.PI)
+              c.fillStyle = '#f4ead2'; c.font = `700 ${7 + i}px ${th.style === 'soft' ? 'Georgia' : 'monospace'}`
+              c.fillText('z', bw * 0.7 + ph * 10 + i * 3, -6 - ph * 16 - i * 4)
+            }
+            c.globalAlpha = dim ? 0.55 : 1
+          }
+        }
         if (t.kind === 'station' && t.status) {                      // the tool's status lamp
           const col = STATUS_COLOR[t.status], pulse = t.status === 'connected' ? 0.6 + 0.4 * Math.sin(now / 400) : 1
           c.fillStyle = css(th.dark); c.fillRect(bw - 5, bh - 20, 2, 16)
@@ -530,6 +618,21 @@ export class CityView {
           c.restore(); c.globalAlpha = 1
         } })
       }
+    }
+    for (const cr of this.couriers) {
+      const [x, y] = this.courierAt(cr)
+      items.push({ y, draw: () => {
+        c.save(); c.translate(Math.round(x), Math.round(y)); if (cr.dir < 0) c.scale(-1, 1)
+        const p = new Paint(c, th)
+        if (cr.vehicle === 'boat') drawBoat(p, cr.color, now)
+        else if (cr.vehicle === 'cart') drawCart(p, cr.color, Math.floor(cr.dist / 5))
+        else drawHorse(p, cr.color, Math.floor(cr.dist / 4))
+        c.restore()
+        if (cr.live) {                                         // on an errand right now: a sparkle trail
+          c.fillStyle = `rgba(255,240,170,${0.5 + 0.5 * Math.sin(now / 90)})`
+          c.fillRect(Math.round(x - cr.dir * 12), Math.round(y - 14), 2, 2)
+        }
+      } })
     }
     items.push({ y: pl.y * T, draw: () => this.drawPerson(c, pl.x, pl.y, { color: [230, 190, 70], seed: 3, role: 'player' },
       { dir: pl.dir, step: Math.floor(pl.dist * 5), walking: pl.moving, bob: 0 }) })

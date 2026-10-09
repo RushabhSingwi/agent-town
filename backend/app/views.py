@@ -49,7 +49,7 @@ def agent_owner_view(a: Agent, share: PublicShare | None, file_shares: dict[int,
 
 def connection(c: McpConnection, granted_to: list[dict] | None = None) -> dict:
     return {"id": c.id, "name": c.name, "transport": c.transport, "url": c.url, "command": c.command,
-            "has_auth": bool(c.auth_header_enc), "status": c.status, "status_detail": c.status_detail,
+            "has_auth": bool(c.auth_header_enc), "app": c.app, "oauth_account_id": c.oauth_account_id, "status": c.status, "status_detail": c.status_detail,
             "server_name": c.server_name, "server_version": c.server_version,
             "last_checked_at": c.last_checked_at.isoformat() if c.last_checked_at else None,
             "tools": [{"name": t.name, "description": t.description} for t in c.tools],

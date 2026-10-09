@@ -15,7 +15,7 @@ from .auth import current_user
 from .config import DEV_SECRET, settings
 from .db import get_db
 from .models import Agent, McpConnection, PublicShare, Run, SharedFile, User
-from .routers import account, agents, auth, files, mcp, public, runs
+from .routers import account, agents, auth, connect, files, hosted, mcp, public, runs
 from .routers.agents import owner_view
 from .routers.files import shared_view
 from .routers.mcp import view as connection_view
@@ -39,7 +39,7 @@ async def same_origin_writes(request: Request, call_next):
     return await call_next(request)
 
 
-for r in (auth.router, account.router, agents.router, mcp.router, public.router, runs.router, files.router):
+for r in (auth.router, account.router, agents.router, mcp.router, public.router, runs.router, files.router, connect.router, hosted.router):
     app.include_router(r)
 
 

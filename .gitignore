@@ -17,5 +17,7 @@ frontend/dist/
 !.env.example
 .modal.toml
 auth.json
+client_secret*.json
+client-secret*.json
 *.pem
 *.key

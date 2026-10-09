@@ -18,7 +18,9 @@ export type Thing = Rect & {                // x, y, w, h: the sprite's area in 
   key: string; kind: ThingKind; id: number
   style: BuildingStyle; color: RGB; spec?: HouseSpec
   door: Pt                                  // where you stand to talk to it
+  via?: { road: number; at: number }        // where its footpath meets a road (roads[road][at])
   label: string; sub?: string; status?: Status; npc?: Npc
+  server?: string                           // a tool's name in agents' tool calls: mcp__<server>__…
 }
 export type Decor = { kind: 'tree' | 'bush' | 'rock' | 'lamp' | 'bench' | 'stall' | 'hay' | 'flowers' | 'fountain' | 'sign'; x: number; y: number; r: number; text?: string }
 export type Wire = { from: Thing; to: Thing; status: Status; team?: boolean }
@@ -50,7 +52,7 @@ export const STATUS_LABEL: Record<Status, string> = {
   needs_sandbox: 'runs in sandbox', unknown: 'not checked',
 }
 
-const seedOf = (s: string) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7)
+export const seedOf = (s: string) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7)
 
 function rng(seed: number) {                         // mulberry32: small, fast, repeatable
   let a = seed >>> 0
@@ -108,7 +110,7 @@ function line(items: Item[], start: Pt, angle: number, rand: () => number, place
   if (!items.length) return null
   const maxLen = 30 + items.length * 14
   let r = road(start[0], start[1], angle, 30, rand)
-  let i = 0, d = 3, side = rand() < 0.5 ? 1 : -1
+  let i = 0, d = 3, side = rand() < 0.5 ? 1 : -1, lastAttach = 0
   const fits = (foot: Rect) => !placed.some(p => overlaps(foot, p, 0.8)) &&
     roads.concat([r]).every(rd => [[foot.x, foot.y], [foot.x + foot.w, foot.y], [foot.x, foot.y + foot.h], [foot.x + foot.w, foot.y + foot.h],
       [foot.x + foot.w / 2, foot.y + foot.h / 2], [foot.x + foot.w / 2, foot.y], [foot.x + foot.w / 2, foot.y + foot.h]].every(c => distToPolyline(c as Pt, rd) > 1.1))
@@ -131,20 +133,42 @@ function line(items: Item[], start: Pt, angle: number, rand: () => number, place
     }
     if (rect && foot) {
       const door: Pt = [rect.x + (it.spec ? houseSize(it.spec).body : TOOL_PX) / T / 2, rect.y + rect.h + 0.6]
-      things.push({ ...it, ...rect, door })
-      placed.push(foot)
       // a footpath from the door, bending once, to the nearest point on the road
-      let best = r[0], bd = Infinity
-      for (const p of r) { const dd = Math.hypot(p[0] - door[0], p[1] - door[1]); if (dd < bd) { bd = dd; best = p } }
+      let bi = 0, bd = Infinity
+      r.forEach((p, j) => { const dd = Math.hypot(p[0] - door[0], p[1] - door[1]); if (dd < bd) { bd = dd; bi = j } })
+      const best = r[bi]
+      things.push({ ...it, ...rect, door, via: { road: roads.length, at: bi } })   // this road is pushed next
+      placed.push(foot)
+      lastAttach = Math.max(lastAttach, bi)
       paths.push([door, [door[0], (door[1] + best[1]) / 2 + 0.4], best])
       i++; side = -side as 1 | -1
       d += it.w * 0.55 + 1 + rand() * 1.5
     } else d += 0.7
   }
-  const used = Math.min(r.length, Math.ceil(d) + 3)
+  const used = Math.min(r.length, Math.max(Math.ceil(d) + 3, lastAttach + 2))
   const kept = r.slice(0, used)
   roads.push(kept)
   return kept
+}
+
+/** The way a courier travels from one building to another: down its footpath, along its road to the
+ *  square, across, and out along the other road. Points in tiles. */
+export function route(L: Layout, from: Thing, to: Thing): Pt[] {
+  if (!from.via || !to.via) return [from.door, to.door]
+  const a = L.roads[from.via.road], b = L.roads[to.via.road]
+  if (from.via.road === to.via.road) {
+    const [i, j] = [from.via.at, to.via.at]
+    const mid = i <= j ? a.slice(i, j + 1) : a.slice(j, i + 1).reverse()
+    return [from.door, ...mid, to.door]
+  }
+  return [from.door, ...a.slice(0, from.via.at + 1).reverse(), [L.plaza.x, L.plaza.y + L.plaza.r * 0.55],
+    ...b.slice(0, to.via.at + 1), to.door]
+}
+
+/** A lane round the island, out at sea, for boats. */
+export function seaLane(L: Layout): Pt[] {
+  const [W, H] = L.grid, m = 1.1
+  return [[m, m], [W - m, m], [W - m, H - m], [m, H - m], [m, m]]
 }
 
 export function layout(city: City): Layout {
@@ -179,7 +203,8 @@ export function layout(city: City): Layout {
   // the farm road west, with your tools and their fields
   const tools: Item[] = (city.me ? city.connections : []).map(c => ({
     key: `station:${c.id}`, kind: 'station' as const, id: c.id, style: toolBuilding(c), color: [150, 110, 70] as RGB,
-    w: TOOL_PX / T, h: TOOL_PX / T, label: c.name, sub: STATUS_LABEL[c.status], status: c.status }))
+    w: TOOL_PX / T, h: TOOL_PX / T, label: c.name, sub: STATUS_LABEL[c.status], status: c.status,
+    server: c.app || c.name.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') }))
   const farm = line(tools, [-plaza.r - 0.5, 0.5], Math.PI, rand, placed, roads, paths, things)
   if (farm) decor.push({ kind: 'sign', x: farm[Math.min(4, farm.length - 1)][0], y: farm[Math.min(4, farm.length - 1)][1] - 1.6, r: 0, text: 'The farm · your tools' })
 

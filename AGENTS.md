@@ -81,7 +81,8 @@ Knowing this lets you write instructions that work:
 | Chat-driven work: someone asks, it works, it answers | Scheduled or background jobs ("every morning…") |
 | Drafting, reviewing, summarizing, planning, research, analysis | Reacting to events (new email, a webhook) |
 | Using files it was given: playbooks, FAQs, checklists, examples | Remembering previous chats, or saving files between chats |
-| Apps its owner connected and allowed (MCP over HTTP, or a command run in the sandbox) | Gmail, Google Calendar, Notion, Slack sign-in (coming); browsers or desktop apps |
+| Apps its owner connected and allowed (MCP over HTTP, or a command run in the sandbox) | Notion, Slack, Linear sign-in (coming); browsers or desktop apps |
+| Gmail (search, read, **draft** — never send) and Google Calendar (list, add events, no invites), on servers with a Google client | Sending email or calendar invitations on its own |
 | A team: a lead handing work to other agents (Claude) | Teams more than one level deep; teams on Codex |
 | Markdown and text files, up to 200,000 characters each, 50 per agent | Images, PDFs, spreadsheets as knowledge files |
 

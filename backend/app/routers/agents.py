@@ -159,6 +159,9 @@ def set_grants(agent_id: int, body: GrantsIn, user: User = Depends(require_user)
     a.grants = [x for x in a.grants if (x.connection_id, x.tool_name) in wanted]
     have = {(x.connection_id, x.tool_name) for x in a.grants}
     a.grants += [AgentToolGrant(connection_id=c, tool_name=t) for c, t in sorted(wanted - have, key=str)]
+    if wanted != have:
+        from .runs import end_open_runs
+        end_open_runs(db, a, "Its apps changed: your next message starts a fresh chat with them.")
     db.commit()
     return owner_view(db, a)
 
@@ -172,7 +175,11 @@ def set_team(agent_id: int, body: TeamIn, user: User = Depends(require_user), db
         if mid == a.id:
             raise HTTPException(422, "An agent can't be on its own team")
         members.append(own_agent(db, user, mid))
+    changed = {m.id for m in a.team} != {m.id for m in members}
     a.team = members
+    if changed:
+        from .runs import end_open_runs
+        end_open_runs(db, a, "Its team changed: your next message starts a fresh chat with them.")
     db.commit()
     return owner_view(db, a)
 
