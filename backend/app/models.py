@@ -104,6 +104,8 @@ class Agent(Base):
     model_credential_id: Mapped[int | None] = mapped_column(
         ForeignKey("model_credentials.id", ondelete="SET NULL"))
     model: Mapped[str] = mapped_column(String(100), default="")
+    # How hard it thinks before answering: low … max ("" = the model's own default). See manifest.EFFORTS.
+    thinking: Mapped[str] = mapped_column(String(10), default="")
     # What its building looks like on the map: studio, forge, library… ("" = picked from its description)
     building: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

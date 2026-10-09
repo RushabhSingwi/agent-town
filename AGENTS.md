@@ -44,7 +44,8 @@ Instructions…
 ```
 
 Claude Code's own `tools:` field (a list like `Read, Grep`) and `model:` are **ignored**: in Agent Town,
-what an agent may use is chosen by its owner in the app.
+what an agent may use, and which model it thinks with and how hard (its "brain"), are chosen by its
+owner in the app.
 
 ### How an agent runs
 

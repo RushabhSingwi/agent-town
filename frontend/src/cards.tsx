@@ -1,7 +1,7 @@
 // The card at the bottom of the screen: whatever you clicked in the city.
 
 import { useEffect, useState } from 'react'
-import { api, type Connection, type Credential, type FileFull, type MyAgent, type Share, type SharedFile } from './api'
+import { api, type Connection, type Credential, type FileFull, type MyAgent, type Share, type SharedFile, type Thinking } from './api'
 import { STATUS_LABEL } from './city/layout'
 import { Err, Md, Modal, msg, readFiles } from './ui'
 
@@ -132,26 +132,60 @@ export function LibraryCard({ shares, me, reload, onClose }: { shares: Share[]; 
   )
 }
 
-export function ModelPicker({ agent, run }: { agent: MyAgent; run: (fn: () => Promise<unknown>) => Promise<void> }) {
+// Which brain an agent thinks with, and how hard. Each agent has its own: a quick helper on Haiku, a
+// careful planner on Opus thinking at max. Changes apply from its next chat.
+const CLAUDE_MODELS: { id: string; name: string; says: string }[] = [
+  { id: 'claude-haiku-5-5', name: 'Haiku 5.5', says: 'fastest and cheapest, for quick everyday jobs' },
+  { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5', says: 'fast and capable, a good all-rounder' },
+  { id: 'claude-opus-5-5', name: 'Opus 5.5', says: 'smarter, for harder work' },
+  { id: 'claude-fable-5-1', name: 'Fable 5.1', says: 'the most capable, slower and pricier' },
+]
+const THINKING: { id: Thinking; name: string; says: string }[] = [
+  { id: '', name: 'Auto', says: "the model's own default" },
+  { id: 'low', name: 'Quick', says: 'answers fast, thinks briefly' },
+  { id: 'medium', name: 'Balanced', says: 'thinks a little before answering' },
+  { id: 'high', name: 'Careful', says: 'thinks things through' },
+  { id: 'xhigh', name: 'Deep', says: 'works hard on tricky jobs' },
+  { id: 'max', name: 'Deepest', says: 'as hard as it can: slowest, uses the most of your plan' },
+]
+
+export function BrainPicker({ agent, run }: { agent: MyAgent; run: (fn: () => Promise<unknown>) => Promise<void> }) {
   const [creds, setCreds] = useState<Credential[] | null>(null)
   const [model, setModel] = useState(agent.model)
   useEffect(() => { api.credentials().then(d => setCreds(d.credentials), () => setCreds([])) }, [])
   if (creds === null) return null
+  if (!creds.length) return <p className="empty">No AI account yet. Add your Claude or ChatGPT account under your @username (top right).</p>
   const def = creds.find(c => c.is_default)
+  const cred = creds.find(c => c.id === agent.model_credential_id) ?? def
+  const claude = !cred || cred.provider === 'anthropic'
+  const known = CLAUDE_MODELS.some(m => m.id === agent.model)
+  const think = THINKING.find(t => t.id === agent.thinking) ?? THINKING[0]
   return (
-    <>
-      <h3>Runs on</h3>
-      {creds.length === 0 ? <p className="empty">No model key yet. Add your API key under your @username (top right).</p> :
-        <div className="row tight">
-          <select value={agent.model_credential_id ?? 0}
-            onChange={e => run(() => api.updateAgent(agent.id, { model_credential_id: Number(e.target.value) }))}>
-            <option value={0}>Default{def ? ` (${def.label})` : ''}</option>
-            {creds.map(c => <option key={c.id} value={c.id}>{c.label}{c.hint ? ` …${c.hint}` : ''}</option>)}
-          </select>
-          <input className="note" value={model} placeholder="model (blank = provider default)" onChange={e => setModel(e.target.value)}
-            onBlur={() => model !== agent.model && run(() => api.updateAgent(agent.id, { model }))} />
-        </div>}
-    </>
+    <div className="brain">
+      {creds.length > 1 && <label>Account
+        <select value={agent.model_credential_id ?? 0}
+          onChange={e => run(() => api.updateAgent(agent.id, { model_credential_id: Number(e.target.value), model: '' }))}>
+          <option value={0}>Your default{def ? ` (${def.label})` : ''}</option>
+          {creds.map(c => <option key={c.id} value={c.id}>{c.label}{c.hint ? ` …${c.hint}` : ''}</option>)}
+        </select></label>}
+      <label>Brain
+        {claude
+          ? <select value={agent.model} onChange={e => run(() => api.updateAgent(agent.id, { model: e.target.value }))}>
+              <option value="">Automatic (Sonnet 5.5)</option>
+              {CLAUDE_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}: {m.says}</option>)}
+              {agent.model && !known && <option value={agent.model}>{agent.model}</option>}
+            </select>
+          : <input value={model} placeholder="Automatic (Codex's default model)" onChange={e => setModel(e.target.value)}
+              onBlur={() => model !== agent.model && run(() => api.updateAgent(agent.id, { model: model.trim() }))} />}
+      </label>
+      <label>Thinking
+        <span className="seg wrap" role="radiogroup" aria-label="How hard it thinks">
+          {THINKING.map(t => <button key={t.id} type="button" role="radio" aria-checked={t.id === think.id} title={t.says}
+            className={t.id === think.id ? 'on' : ''} onClick={() => t.id !== think.id && run(() => api.updateAgent(agent.id, { thinking: t.id }))}>{t.name}</button>)}
+        </span>
+        <span className="hint">{think.name}: {think.says}. More thinking is smarter but slower{claude ? '' : ' (Codex tops out at Deep)'}.</span>
+      </label>
+    </div>
   )
 }
 

@@ -15,6 +15,9 @@ from .models import DEFINITION, Agent, McpConnection, ModelCredential, PublicSha
 
 
 DEFAULT_MODEL = {"anthropic": "claude-sonnet-5-5", "openai": ""}  # "": the provider's CLI default
+# Thinking effort, from quick to thorough. Claude Code takes these as --effort; Codex has no "max",
+# so the runner caps it at "xhigh" there.
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
 def granted_tools(a: Agent) -> list[dict]:
@@ -62,7 +65,7 @@ def build_manifest(db: Session, a: Agent) -> dict:
     model = None
     if cred:
         model = {"credential_id": cred.id, "provider": cred.provider, "kind": cred.kind,
-                 "status": cred.status, "model": a.model or DEFAULT_MODEL[cred.provider]}
+                 "status": cred.status, "model": a.model or DEFAULT_MODEL[cred.provider], "thinking": a.thinking}
 
     return {
         "version": 1,

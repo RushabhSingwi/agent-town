@@ -303,3 +303,9 @@ canvas.portrait { border: 3px solid var(--ink); image-rendering: pixelated; }
   .dlg-name { max-width: none; white-space: nowrap; text-align: left; }
   .dlg-input textarea { min-width: 0; }
 }
+
+/* the thinking picker: six steps, wraps on a phone */
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap button { border-radius: 0; border-left: 0; min-width: 72px; }
+.seg.wrap button:first-child { border-left: 2px solid; border-radius: 0; }
+.brain .hint { font-size: 12px; }

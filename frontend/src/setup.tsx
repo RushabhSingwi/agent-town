@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { api, type City, type Connection, type Credential, type GoogleStatus, type MyAgent } from './api'
 import { APPS, connectionFor, suggestedApps, type App } from './connectors'
+import { BrainPicker } from './cards'
 import { Err, Modal, msg } from './ui'
 
 const GENERIC = ['What should it call you, and what do you do?', 'What are you working on right now?', 'Anything it should always or never do?']
@@ -193,16 +194,11 @@ function Brain({ agent, reload, onAccount }: { agent: MyAgent; reload: () => Pro
         API key). It's only ever used for your agents, and it's stored encrypted.</p>
       <button className="primary" onClick={onAccount}>Add your Claude or ChatGPT account</button>
     </div>)
-  const current = creds.find(c => c.id === agent.model_credential_id) ?? creds.find(c => c.is_default)
+  const run = async (fn: () => Promise<unknown>) => { await fn(); await reload() }
   return (
     <div className="brain">
-      <p>{agent.name} will think with <b>{current?.label}</b>.</p>
-      {creds.length > 1 && <label>Use a different one
-        <select value={agent.model_credential_id ?? 0}
-          onChange={async e => { await api.updateAgent(agent.id, { model_credential_id: Number(e.target.value) }); await reload() }}>
-          <option value={0}>Your default ({creds.find(c => c.is_default)?.label})</option>
-          {creds.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select></label>}
-      <p className="hint">That's it. Say hi, or walk up to {agent.name} on the map any time.</p>
+      <p>Pick how {agent.name} thinks. Bigger brains and more thinking are smarter, but slower and use more of your plan.</p>
+      <BrainPicker agent={agent} run={run} />
+      <p className="hint">That's it. Say hi, or walk up to {agent.name} on the map any time. You can change this later in the chest in its house.</p>
     </div>)
 }

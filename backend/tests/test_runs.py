@@ -63,7 +63,7 @@ def test_run_round_trip(make_user, client, fake_sandbox):
     sb = box(client, token)
     setup = sb.get("/api/runtime/setup").json()
     assert setup["credential"] == {"provider": "anthropic", "kind": "subscription", "secret": OAT,
-                                   "model": "claude-sonnet-5-5"}
+                                   "model": "claude-sonnet-5-5", "thinking": ""}
     assert setup["manifest"]["instructions"].startswith("# Reel writer")
     assert OAT not in str(setup["manifest"])  # the manifest itself stays secret-free
 
@@ -257,3 +257,47 @@ def test_awake_lists_only_your_open_runs(make_user, fake_sandbox):
     assert bob.get("/api/runs/active").json() == []
     alice.delete(f"/api/runs/{run_id}")
     assert alice.get("/api/runs/active").json() == []
+
+
+def test_each_agent_has_its_own_model_and_thinking(make_user, client, fake_sandbox):
+    alice = make_user("alice")
+    a, b = setup_agent(alice), alice.post("/api/agents", json={"markdown": "---\nname: Quick\n---\nBe brief.\n"}).json()
+    run_id = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
+    r = alice.patch(f"/api/agents/{a['id']}", json={"model": "claude-opus-5-5", "thinking": "max"})
+    assert r.status_code == 200 and (r.json()["model"], r.json()["thinking"]) == ("claude-opus-5-5", "max")
+    assert "thinks differently" in alice.get(f"/api/runs/{run_id}").json()["detail"]   # applies from the next chat
+    assert alice.patch(f"/api/agents/{a['id']}", json={"thinking": "extreme"}).status_code == 422
+    assert alice.patch(f"/api/agents/{a['id']}", json={"model": "opus; rm -rf /"}).status_code == 422
+
+    alice.post(f"/api/agents/{a['id']}/runs")
+    alice.post(f"/api/agents/{b['id']}/runs")
+    (_, ta), (_, tb) = fake_sandbox.started[1:]
+    cred = box(client, ta).get("/api/runtime/setup").json()["credential"]
+    assert (cred["model"], cred["thinking"]) == ("claude-opus-5-5", "max")
+    cred = box(client, tb).get("/api/runtime/setup").json()["credential"]
+    assert (cred["model"], cred["thinking"]) == ("claude-sonnet-5-5", "")              # the other one keeps the defaults
+
+
+def test_runner_passes_model_and_effort_to_the_clis(tmp_path, monkeypatch):
+    import importlib
+    import sys
+    monkeypatch.setenv("AGENTTOWN_API_URL", "http://x")
+    monkeypatch.setenv("AGENTTOWN_RUN_TOKEN", "rt_x")
+    monkeypatch.syspath_prepend(str(__import__("pathlib").Path(__file__).parents[1] / "runner"))
+    sys.modules.pop("runner", None)
+    runner = importlib.import_module("runner")
+    monkeypatch.setattr(runner, "HOME", tmp_path)
+    monkeypatch.setattr(runner, "WORK", tmp_path)
+    monkeypatch.setattr(runner, "emit", lambda *a, **k: None)
+    cmds = []
+    monkeypatch.setattr(runner, "stream", lambda cmd, *a: (cmds.append(cmd), (0, ""))[1])
+    m = {"agent": {"name": "A", "description": ""}, "instructions": "hi", "tools": [], "team": [], "shared": [], "public": []}
+    monkeypatch.setattr(runner, "system_prompt", lambda *a: "sys")
+
+    runner.Claude(m, {"kind": "api_key", "secret": "k", "model": "claude-opus-5-5", "thinking": "xhigh"}, {}, []).turn("hi")
+    runner.Claude(m, {"kind": "api_key", "secret": "k", "model": "", "thinking": ""}, {}, []).turn("hi")
+    runner.Codex(m, {"kind": "api_key", "secret": "k", "model": "", "thinking": "max"}, {}, []).turn("hi")
+    claude, plain, codex = cmds
+    assert claude[claude.index("--model") + 1] == "claude-opus-5-5" and claude[claude.index("--effort") + 1] == "xhigh"
+    assert "--model" not in plain and "--effort" not in plain
+    assert 'model_reasoning_effort="xhigh"' in codex                                   # Codex has no "max"

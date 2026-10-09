@@ -162,7 +162,8 @@ class Claude:
     sandbox) and exactly the granted MCP tools. dontAsk mode refuses anything not allowed."""
 
     def __init__(self, m: dict, cred: dict, auth_headers: dict, files: list[str], team: list[dict] | None = None):
-        self.model, self.session, self.system = cred["model"], None, system_prompt(m, files)
+        self.model, self.effort = cred["model"], cred.get("thinking") or ""
+        self.session, self.system = None, system_prompt(m, files)
         self.env = {**os.environ}
         for k in ("AGENTTOWN_RUN_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"):
             self.env.pop(k, None)
@@ -205,6 +206,8 @@ class Claude:
                "--strict-mcp-config", "--mcp-config", str(self.mcp), "--append-system-prompt", self.system]
         if self.model:
             cmd += ["--model", self.model]
+        if self.effort:
+            cmd += ["--effort", self.effort]
         if self.session:
             cmd += ["--resume", self.session]
         finished = False
@@ -280,6 +283,9 @@ class Codex:
                        "-c", 'approval_policy="never"', "-c", f"developer_instructions={toml_str(system_prompt(m, files))}"]
         if self.model:
             self.common += ["-m", self.model]
+        effort = {"max": "xhigh"}.get(cred.get("thinking") or "", cred.get("thinking") or "")
+        if effort:
+            self.common += ["-c", f"model_reasoning_effort={toml_str(effort)}"]
 
     def turn(self, text: str) -> None:
         cmd = ["codex", "exec", "resume", self.thread, *self.common, "-"] if self.thread else \

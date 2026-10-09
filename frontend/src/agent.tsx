@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import { api, type City, type Connection, type Credential, type FileFull, type Grant, type MyAgent, type RunStatus } from './api'
-import { FileModal, ManifestModal, ModelPicker } from './cards'
+import { BrainPicker, FileModal, ManifestModal } from './cards'
 import { Dialogue } from './chat'
 import { AGENT_BUILDINGS, agentBuilding } from './city/kinds'
 import { STATUS_LABEL } from './city/layout'
@@ -71,7 +71,7 @@ function House({ agent, city, creds, reload, onSetup, onClose, onGone }: {
     { key: 'board', icon: '📌', name: 'Noticeboard', says: about ? 'what it knows about you' : 'nothing about you yet' },
     { key: 'stable', icon: '🐴', name: 'Stable', says: apps.length ? apps.map(a => a.name).join(', ') : 'no apps yet' },
     { key: 'team', icon: '🖼️', name: 'Portraits', says: team.length ? `its team of ${team.length}` : 'works alone' },
-    { key: 'chest', icon: '🧰', name: 'Chest', says: 'settings' },
+    { key: 'chest', icon: '🧰', name: 'Chest', says: 'its brain and settings' },
   ]
 
   return (
@@ -140,7 +140,8 @@ function House({ agent, city, creds, reload, onSetup, onClose, onGone }: {
       </section>}
 
       {spot === 'chest' && <section className="spot">
-        <ModelPicker agent={agent} run={run} />
+        <h3>Its brain</h3>
+        <BrainPicker agent={agent} run={run} />
         <h3>Its house on the map</h3>
         <div className="row tight">
           <select value={agent.building || ''} onChange={e => run(() => api.updateAgent(agent.id, { building: e.target.value }))}>

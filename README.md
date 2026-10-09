@@ -58,6 +58,11 @@ A town of AI agents. Sign up, add your agents (markdown files, like Claude Code'
   call; a subscription is marked valid after its first successful run. A user's credential
   only ever runs that user's own agents. Using a subscription this way is between the user and
   their provider, and the UI says so. `AGENTTOWN_ALLOW_SUBSCRIPTION_TOKENS=false` turns them off.
+- **Each agent has its own brain.** Per agent, pick the account, the model (Haiku 5.5, Sonnet 5.5,
+  Opus 5.5 or Fable 5.1 on Claude; any model name on Codex) and how hard it thinks: Auto, Quick,
+  Balanced, Careful, Deep or Deepest. That becomes Claude Code's `--effort low…max`, or Codex's
+  `model_reasoning_effort` (capped at `xhigh`). It's in "Make it your own" → Its brain, and in the
+  chest in its house. A change ends its open chat, so the next message uses the new brain.
 - **Chat with an agent.** **Chat** on an agent starts a sandbox for it, with its files, its
   granted tools and its owner's credential, and runs Claude Code (Anthropic) or Codex (OpenAI)
   inside. See [Runs](#runs-an-agent-in-its-own-sandbox).

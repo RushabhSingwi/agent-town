@@ -260,7 +260,7 @@ def runtime_setup(r: Run = Depends(current_run), db: Session = Depends(get_db)):
             headers[str(c.id)] = decrypt(c.auth_header_enc)
     return {"run_id": r.id, "manifest": m, "auth_headers": headers,
             "credential": {"provider": cred.provider, "kind": cred.kind, "secret": secret,
-                           "model": m["model"]["model"]}}
+                           "model": m["model"]["model"], "thinking": m["model"]["thinking"]}}
 
 
 @router.get("/api/runtime/inbox", tags=["runtime"])

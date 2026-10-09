@@ -40,7 +40,7 @@ def agent_summary(a: Agent) -> dict:
 
 def agent_owner_view(a: Agent, share: PublicShare | None, file_shares: dict[int, int]) -> dict:
     return {**agent_summary(a), "can_use_public": a.can_use_public,
-            "model_credential_id": a.model_credential_id, "model": a.model,
+            "model_credential_id": a.model_credential_id, "model": a.model, "thinking": a.thinking,
             "files": [{**file_full(f), "share_id": file_shares.get(f.id)} for f in a.files],
             "grants": [{"connection_id": g.connection_id, "tool_name": g.tool_name} for g in a.grants],
             "team": [m.id for m in a.team],

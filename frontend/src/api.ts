@@ -12,9 +12,10 @@ export type AgentSummary = {
 export type Grant = { connection_id: number; tool_name: string | null }
 export type MyAgent = Omit<AgentSummary, 'files'> & {
   files: FileFull[]; grants: Grant[]; share_id: number | null; can_use_public: boolean
-  model_credential_id: number | null; model: string; run_status?: RunStatus | null; team: number[]
+  model_credential_id: number | null; model: string; thinking: Thinking; run_status?: RunStatus | null; team: number[]
 }
 
+export type Thinking = '' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export type RunStatus = 'starting' | 'ready' | 'busy' | 'stopped' | 'error'
 
 export type ApiToken = { id: number; name: string; prefix: string; created_at: string; last_used_at: string | null; expires_at: string | null }
@@ -107,7 +108,7 @@ export const api = {
 
   createAgent: (markdown: string, name: string | null, files: { path: string; content: string }[]) =>
     call<MyAgent>('POST', '/api/agents', { markdown, name: name || null, files }),
-  updateAgent: (id: number, patch: Partial<Pick<MyAgent, 'name' | 'description' | 'color' | 'can_use_public' | 'model' | 'model_credential_id' | 'building'>>) =>
+  updateAgent: (id: number, patch: Partial<Pick<MyAgent, 'name' | 'description' | 'color' | 'can_use_public' | 'model' | 'thinking' | 'model_credential_id' | 'building'>>) =>
     call<MyAgent>('PATCH', `/api/agents/${id}`, patch),
   deleteAgent: (id: number) => call('DELETE', `/api/agents/${id}`),
   putFile: (id: number, path: string, content: string) => call<MyAgent>('PUT', `/api/agents/${id}/files`, { path, content }),

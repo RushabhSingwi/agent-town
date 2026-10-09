@@ -108,8 +108,12 @@ def update_agent(agent_id: int, body: AgentPatch, user: User = Depends(require_u
             if c is None or c.owner_id != user.id:
                 raise HTTPException(404, "No such credential")
             a.model_credential_id = c.id
+    brain = (a.model_credential_id, a.model, a.thinking)
     for field, value in changes.items():
         setattr(a, field, value)
+    if (a.model_credential_id, a.model, a.thinking) != brain:
+        from .runs import end_open_runs
+        end_open_runs(db, a, "It thinks differently now: your next message starts a fresh chat.")
     db.commit()
     return owner_view(db, a)
 
