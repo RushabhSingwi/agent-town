@@ -101,6 +101,38 @@ model credentials (never returned, owner-only), sharing, grants, the manifest, t
 handshake (JSON and SSE replies), credential prompts, the SSRF guard, and runs (run tokens,
 privacy, reuse, provider failures, reaping a dead sandbox).
 
+## Your own town on your computer (Docker)
+
+To keep a town running on your own machine, show it to friends, turn it off and pick up where you
+left off, use Docker. You need Docker Desktop and nothing else.
+
+```sh
+make up       # first time (and after pulling new code): builds and starts at http://127.0.0.1:8000
+make stop     # turn it off. Everything is kept
+make start    # turn it back on
+make backup   # save the database to backups/ (git-ignored)
+make status   # is it running, and the address for friends on your Wi-Fi
+make share    # share it beyond your Wi-Fi with an ngrok tunnel (below)
+make          # every command
+```
+
+- **Your data** (people, agents, files, connected apps, chats) lives in Postgres, in the Docker volume
+  `agenttown-data`. Stopping, restarting, rebooting and `make up` after an update all keep it.
+  Only `make destroy` (which asks first) deletes it.
+- **`.env.local`** is made on the first `up` and is git-ignored. It holds a new secret key that
+  encrypts the AI accounts and app sign-ins people save. Back it up with your backups: a database
+  without its key can't decrypt those, and they'd have to be added again. If you set up Google
+  sign-in for development, its keys are copied in from `backend/.env`.
+- **Agents run inside the container** (it includes Claude Code and Codex), not on your Mac, and
+  each person's agents use their own AI account.
+- **Port:** 8000 by default, so stop the dev server first, or start with `AGENTTOWN_PORT=8080 make up`.
+- **Friends** on the same Wi-Fi can open the address `make status` prints, and each makes an
+  account. To share outside your network, set `AGENTTOWN_APP_URL` in `.env.local` to your ngrok
+  address (free accounts get one fixed domain, under Domains in the ngrok dashboard), run `make up`
+  so the town picks it up, then `make share`. Ctrl-C closes the tunnel. For Google sign-in through it, add
+  that address's `/api/connect/google/callback` to your Google client, and add your friends as test
+  users while the app is in Testing mode.
+
 ## Connecting Gmail and Google Calendar
 
 Agent Town signs people in with Google (OAuth 2.0 with PKCE), keeps their tokens encrypted on the
