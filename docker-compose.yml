@@ -1,7 +1,7 @@
 # Your own Agent Town on your computer, with its data kept between restarts.
-#   ./town.sh up      first time: makes .env.local (your secret key), builds, starts
-#   ./town.sh stop    turn it off; ./town.sh start turns it back on, everything still there
-# Data lives in the Docker volume `agenttown-data` until you delete it on purpose (./town.sh destroy).
+#   make up        first time: makes .env.local (your secret key), builds, starts
+#   make stop    turn it off; make start turns it back on, everything still there
+# Data lives in the Docker volume `agenttown-data` until you delete it on purpose (make destroy).
 
 services:
   db:
@@ -9,7 +9,7 @@ services:
     environment:
       POSTGRES_DB: agenttown
       POSTGRES_USER: agenttown
-      POSTGRES_PASSWORD: ${AGENTTOWN_DB_PASSWORD:?run ./town.sh up to create .env.local}
+      POSTGRES_PASSWORD: ${AGENTTOWN_DB_PASSWORD:?run make up to create .env.local}
     volumes:
       - agenttown-data:/var/lib/postgresql/data
     healthcheck:
