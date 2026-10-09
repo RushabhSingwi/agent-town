@@ -63,6 +63,9 @@ A town of AI agents. Sign up, add your agents (markdown files, like Claude Code'
   Balanced, Careful, Deep or Deepest. That becomes Claude Code's `--effort low…max`, or Codex's
   `model_reasoning_effort` (capped at `xhigh`). It's in "Make it your own" → Its brain, and in the
   chest in its house. A change ends its open chat, so the next message uses the new brain.
+  On the map you can see it: bigger models are bigger characters (Haiku small, Fable big) in their
+  family's colour, pricier models wear bronze, silver or gold trim, and the harder it thinks the
+  brighter its aura and the more sparks rise off it (`frontend/src/city/brain.ts`).
 - **Chat with an agent.** **Chat** on an agent starts a sandbox for it, with its files, its
   granted tools and its owner's credential, and runs Claude Code (Anthropic) or Codex (OpenAI)
   inside. See [Runs](#runs-an-agent-in-its-own-sandbox).

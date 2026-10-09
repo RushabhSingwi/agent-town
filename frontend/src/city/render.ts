@@ -608,8 +608,9 @@ export class CityView {
         const pose: NpcPose = { dir: w.dir, step: Math.floor(w.dist * 6), walking, bob: walking ? 0 : (Math.sin(now / 500 + t.id) > 0.6 ? 1 : 0) }
         items.push({ y: w.y * T, draw: () => {
           c.globalAlpha = dim ? 0.55 : 1
-          this.drawPerson(c, w.x, w.y, { color: t.npc!.color, seed: t.npc!.seed, role: t.npc!.role }, pose)
-          c.save(); c.translate(Math.round(w.x * T), Math.round(w.y * T))
+          this.drawPerson(c, w.x, w.y, { color: t.npc!.color, seed: t.npc!.seed, role: t.npc!.role, brain: t.npc!.brain }, { ...pose, now })
+          const s = t.npc!.brain?.scale ?? 1
+          c.save(); c.translate(Math.round(w.x * T), Math.round(w.y * T)); c.scale(s, s)
           if (st === 'busy' || st === 'starting' || st === 'error' || st === 'ready') drawBubble(new Paint(c, th), st, now)
           if (this.selected === t.key) {
             const b = Math.round(Math.sin(now / 200) * 2)
@@ -660,7 +661,9 @@ export class CityView {
       const sel = this.selected === t.key, dim = !!focus && !focus.has(t.key)
       if (t.npc) {                                                   // the name rides on the character
         const w = this.walkers.get(t.key)
-        if (w) { const [sx, sy] = screen(w.x * T, w.y * T - 22); this.label(t.label, sx, sy, z < 1.2 ? 9 : 10, undefined, dim, sel) }
+        const b = t.npc.brain
+        if (w) { const [sx, sy] = screen(w.x * T, w.y * T - 22 * (b?.scale ?? 1) - (b?.gear === 'crown' || b?.gear === 'feather' ? 3 : 0))
+          this.label(t.label, sx, sy, z < 1.2 ? 9 : 10, (sel || z > 1.6) && b?.words ? b.words : undefined, dim, sel) }
       } else {
         const [sx, sy] = screen((t.x + t.w / 2) * T, t.y * T - PAD / 2 + 4)
         this.label(t.label, sx, sy, z < 1.2 ? 9 : 11, z > 1.3 ? t.sub : undefined, dim, sel)
@@ -682,6 +685,8 @@ export class CityView {
   private drawPerson(c: CanvasRenderingContext2D, x: number, y: number, look: Parameters<typeof drawNpc>[1], pose: NpcPose) {
     const th = this.theme
     c.save(); c.translate(Math.round(x * T), Math.round(y * T))
+    const s = look.brain?.scale ?? 1
+    c.scale(s, s)
     if (pose.dir < 0 && th.style !== 'soft') c.scale(-1, 1)
     drawNpc(new Paint(c, th, look.seed), look, { ...pose, dir: th.style !== 'soft' ? 1 : pose.dir })
     c.restore()
@@ -696,7 +701,7 @@ export class CityView {
     const [px, py] = this.toWorld(cx, cy)
     for (const t of this.L.things) {                                  // NPCs first: they stand in front
       const w = t.npc && this.walkers.get(t.key)
-      if (w && Math.abs(px - w.x * T) < 8 && py < w.y * T + 2 && py > w.y * T - 22) return { thing: t, floor: null }
+      if (w && Math.abs(px - w.x * T) < 8 * (t.npc!.brain?.scale ?? 1) && py < w.y * T + 2 && py > w.y * T - 22 * (t.npc!.brain?.scale ?? 1)) return { thing: t, floor: null }
     }
     const order = [...this.L.things].sort((a, b) => (b.y + b.h) - (a.y + a.h))
     for (const t of order) {

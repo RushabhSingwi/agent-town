@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import views
 from ..auth import current_user, require_user
 from ..db import get_db
-from ..manifest import build_manifest
+from ..manifest import brain, build_manifest
 from ..models import DEFINITION, Agent, AgentFile, AgentToolGrant, McpConnection, ModelCredential, PublicShare, User
 from ..schemas import AgentIn, AgentPatch, FileIn, GrantsIn, TeamIn
 
@@ -32,7 +32,7 @@ def owner_view(db: Session, a: Agent) -> dict:
     share = db.scalar(select(PublicShare).where(PublicShare.kind == "agent", PublicShare.agent_id == a.id))
     file_shares = dict(db.execute(select(PublicShare.file_id, PublicShare.id).where(
         PublicShare.kind == "file", PublicShare.file_id.in_([f.id for f in a.files]))).all())
-    return views.agent_owner_view(a, share, file_shares)
+    return {**views.agent_owner_view(a, share, file_shares), "brain": brain(db, a)}
 
 
 def set_file(a: Agent, path: str, content: str) -> AgentFile:

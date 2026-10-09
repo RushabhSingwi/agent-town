@@ -12,9 +12,10 @@ export type AgentSummary = {
 export type Grant = { connection_id: number; tool_name: string | null }
 export type MyAgent = Omit<AgentSummary, 'files'> & {
   files: FileFull[]; grants: Grant[]; share_id: number | null; can_use_public: boolean
-  model_credential_id: number | null; model: string; thinking: Thinking; run_status?: RunStatus | null; team: number[]
+  model_credential_id: number | null; model: string; thinking: Thinking; brain: Brain | null; run_status?: RunStatus | null; team: number[]
 }
 
+export type Brain = { provider: Provider; model: string; thinking: Thinking }
 export type Thinking = '' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export type RunStatus = 'starting' | 'ready' | 'busy' | 'stopped' | 'error'
 
