@@ -73,8 +73,8 @@ Calendar:
 - **Agents, files, chats and connections:** until you delete them. Deleting an agent deletes its
   files and its chat history.
 - **Keys, tokens and connections:** until you remove them in the app.
-- **Your account:** until you ask us to delete it (see below). We then delete your account and
-  everything in it.
+- **Your account:** until you delete it (see below). That deletes your account and everything in it
+  straight away.
 - **Backups and logs:** deleted data can stay in backups and hosting logs for a limited time, then
   it's gone.
 
@@ -82,8 +82,9 @@ Calendar:
 
 - **See and change** your agents, files, connections and keys in the app at any time.
 - **Delete** any agent, file, key, token or connection in the app.
-- **Delete your account:** email us at the contact above from the address on your account, and we'll
-  delete it and everything in it within 30 days.
+- **Delete your account** yourself: your @username (top right) → **Account** → **Delete my account**.
+  It deletes your agents, files, chats, keys, app connections, tokens and public shares at once, and
+  stops any agent that's running. If you can't sign in, email us from the address on your account.
 - **Get a copy** of your data, or ask us to correct it: email us.
 - Depending on where you live (for example under the GDPR in the EU and UK, or in California), you
   may have further rights, such as to object to or restrict how we use your data. Email us to use

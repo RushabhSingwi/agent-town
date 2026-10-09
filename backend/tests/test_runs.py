@@ -223,3 +223,11 @@ def test_sandbox_gets_the_teams_tool_credentials(make_user, client, fake_sandbox
     assert [t["slug"] for t in setup["manifest"]["team"]] == ["helper"]
     assert setup["manifest"]["tools"] == []                          # the lead itself has no tools…
     assert setup["auth_headers"] == {str(conn["id"]): "Bearer m"}     # …but its teammate's credentials come along
+
+
+def test_deleting_the_account_stops_its_sandboxes(make_user, fake_sandbox):
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    run_id = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
+    assert alice.request("DELETE", "/api/account", json={"password": "correct horse battery"}).status_code == 200
+    assert fake_sandbox.stopped == [f"fake-{run_id}"]

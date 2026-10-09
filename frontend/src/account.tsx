@@ -115,15 +115,43 @@ function Tokens() {
   )
 }
 
-export function AccountModal({ username, onClose }: { username: string; onClose: () => void }) {
-  const [tab, setTab] = useState<'models' | 'tokens'>('models')
+export function AccountModal({ username, onClose, onDeleted }: { username: string; onClose: () => void; onDeleted: () => void }) {
+  const [tab, setTab] = useState<'models' | 'tokens' | 'account'>('models')
   return (
     <Modal title={`@${username}`} onClose={onClose} wide>
       <div className="seg tabs">
-        <button className={tab === 'models' ? 'on' : ''} onClick={() => setTab('models')}>Models</button>
+        <button className={tab === 'models' ? 'on' : ''} onClick={() => setTab('models')}>AI accounts</button>
         <button className={tab === 'tokens' ? 'on' : ''} onClick={() => setTab('tokens')}>API tokens</button>
+        <button className={tab === 'account' ? 'on' : ''} onClick={() => setTab('account')}>Account</button>
       </div>
-      {tab === 'models' ? <Models /> : <Tokens />}
+      {tab === 'models' ? <Models /> : tab === 'tokens' ? <Tokens /> : <DeleteAccount username={username} onDeleted={onDeleted} />}
     </Modal>
+  )
+}
+
+function DeleteAccount({ username, onDeleted }: { username: string; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className="danger-zone">
+      <h3>Delete your account</h3>
+      <p>This deletes <b>@{username}</b> and everything in it, for good: your agents and their files, your chats,
+        your shared files, your AI accounts and app connections, your API tokens, and anything you shared publicly.
+        Running agents are stopped. It can't be undone.</p>
+      {!open
+        ? <button className="danger" onClick={() => setOpen(true)}>Delete my account…</button>
+        : <form className="row" onSubmit={async e => {
+            e.preventDefault(); setBusy(true); setError(null)
+            try { await api.deleteAccount(password); onDeleted() } catch (err) { setError(msg(err)) } finally { setBusy(false) }
+          }}>
+          <input id="delete-password" className="note" type="password" autoComplete="current-password" autoFocus
+            placeholder="Type your password to confirm" value={password} onChange={e => setPassword(e.target.value)} />
+          <button className="danger" disabled={!password || busy}>{busy ? 'Deleting…' : 'Delete everything'}</button>
+          <button type="button" onClick={() => { setOpen(false); setPassword('') }}>Cancel</button>
+        </form>}
+      <Err error={error} />
+    </div>
   )
 }

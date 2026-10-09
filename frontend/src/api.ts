@@ -141,6 +141,7 @@ export const api = {
   sendMessage: (id: number, text: string) => call<RunEvent>('POST', `/api/runs/${id}/messages`, { text }),
   stopRun: (id: number) => call<Run>('DELETE', `/api/runs/${id}`),
 
+  deleteAccount: (password: string) => call('DELETE', '/api/account', { password }),
   tokens: () => call<ApiToken[]>('GET', '/api/account/tokens'),
   createToken: (name: string, expires_days: number | null) =>
     call<ApiToken & { token: string }>('POST', '/api/account/tokens', { name, expires_days }),

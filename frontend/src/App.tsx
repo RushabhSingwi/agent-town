@@ -151,7 +151,8 @@ export default function App() {
 
       {(modal === 'login' || modal === 'signup') && <AuthModal mode={modal} onClose={() => setModal(null)}
         onDone={() => { setModal(null); setRefit(true); reload() }} />}
-      {modal === 'account' && me && <AccountModal username={me.username} onClose={() => { setModal(null); reload() }} />}
+      {modal === 'account' && me && <AccountModal username={me.username} onClose={() => { setModal(null); reload() }}
+        onDeleted={() => { setModal(null); setSel(null); setSetupId(null); setRefit(true); reload() }} />}
       {modal === 'add' && <AddModal onClose={() => setModal(null)} onWrite={() => setModal('agent')}
         onDone={async id => { setModal(null); setRefit(true); await reload(); if (id) { setSel({ key: `agent:${id}`, floor: null }); setSetupId(id) } }} />}
       {modal === 'agent' && <NewAgentModal onClose={() => setModal(null)}
