@@ -38,6 +38,7 @@ color: #3f8fd2
 building: library
 tools: gmail, notion
 team: research-assistant, meeting-notes
+ask: What's your name, and what do you do? | How do you like answers to sound?
 ---
 
 # Your agent
@@ -55,10 +56,13 @@ You are … what it does, how it works step by step, what it hands back, and wha
 | `building` | no | `studio`, `office`, `forge`, `library`, `lab`, `observatory`, `tavern`, `cottage` or `tower`. Picked from the description if you leave it out. |
 | `tools` | no | MCP tools it works best with (`gmail`, `github`, `postgres`…). A hint for people; it still runs without them. |
 | `team` | no | Other market agents it hands work to (with Claude's Task tool). Installing it installs them too. One level deep. |
+| `ask` | no | Up to 5 questions shown in **Make it your own** right after someone adds it, separated by `\|`. Answers are saved to `about-me.md`, which the agent reads first. Ask what makes it useful for *them*. |
 
 Each line of the frontmatter is `key: value` on a single line.
 
 ### 3. What makes a good market agent
+
+[AGENTS.md](AGENTS.md#part-1-agents-for-agent-town) explains how agents run and what the platform supports; read it first.
 
 - **Useful on its own.** Someone should get value the first time they chat with it.
 - **Clear process and output.** Say how it works and what its answer looks like. A format beats a

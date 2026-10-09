@@ -183,3 +183,36 @@ select.style-pick { font: inherit; font-size: 13px; border: 1px solid #cfc3a8; b
 .market-card p { margin: 0; font-size: 12.5px; color: #4a4030; flex: 1; }
 .market-card button { align-self: flex-start; margin-top: 4px; }
 .market-top { display: flex; align-items: center; gap: 6px; }
+ul.list li .meta.wrap { white-space: normal; }
+
+/* header: the less important things live in the ⋯ menu */
+.menu-wrap { position: relative; }
+button.more { font-size: 18px; line-height: 1; padding: 3px 10px; }
+.menu { position: absolute; right: 0; top: calc(100% + 8px); background: #fffcf4; border-radius: 12px; padding: 10px; width: 240px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 8px; z-index: 5; }
+.menu > button { text-align: left; }
+.menu-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .6px; color: #8a7a5c; }
+.menu .seg { display: flex; }
+
+/* make it your own */
+ol.setup-steps { list-style: none; display: flex; gap: 6px; padding: 0; margin: 0 0 12px; counter-reset: s; flex-wrap: wrap; }
+ol.setup-steps li { counter-increment: s; padding: 4px 10px; border-radius: 999px; background: #f0e7d4; color: #8a7a5c; font-size: 13px; }
+ol.setup-steps li::before { content: counter(s) '. '; }
+ol.setup-steps li.on { background: #ffd98f; color: #241f2e; font-weight: 600; }
+ol.setup-steps li.done { background: #dcefd8; color: #2f6a35; }
+.form textarea { width: 100%; font: inherit; border: 1px solid #cfc3a8; border-radius: 8px; padding: 6px 8px; resize: vertical; }
+.apps { display: flex; flex-direction: column; gap: 8px; }
+.app-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #eadfc8; border-radius: 10px; background: #fbf6ea; }
+.app-row.muted { opacity: .7; }
+.app-icon { font-size: 22px; width: 28px; text-align: center; }
+.app-connect { flex-basis: 100%; }
+.meta.ok { color: #2f8a45; } .meta.warn { color: #b06a12; } .meta.soon { color: #8a7a5c; font-style: italic; }
+button.linklike-btn { border: 0; background: none; color: #b0641c; text-decoration: underline; padding: 0; align-self: flex-start; }
+.brain p { margin: 6px 0; }
+.brain label { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+
+/* agent panel */
+button.setup-btn { margin: 6px 0 2px; width: 100%; padding: 8px; font-size: 14px; }
+details.more-settings { margin-top: 16px; border-top: 1px solid #eadfc8; padding-top: 10px; }
+details.more-settings > summary { cursor: pointer; color: #6b5f4a; font-weight: 600; }
+.menu-link { font-size: 12.5px; color: #8a7a5c; padding: 2px 4px; }

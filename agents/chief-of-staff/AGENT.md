@@ -3,6 +3,7 @@ name: chief-of-staff
 description: Your lead agent. Plans the day, breaks goals into tasks, and hands them to the right teammate.
 tags: lead, planning, team
 author: agent-town
+ask: What's your name, and what do you do? | What are your top 3 goals right now? | What should it never do without asking you first?
 color: #8a6fd1
 building: tower
 team: standup-writer, inbox-triage, meeting-notes, research-assistant, data-analyst

@@ -11,8 +11,9 @@ import { Err, msg, readFiles } from './ui'
 
 type Reload = () => Promise<void>
 
-export function AgentView({ agent, city, floor, reload, onClose, onStatus }: {
+export function AgentView({ agent, city, floor, reload, onClose, onStatus, onSetup }: {
   agent: MyAgent; city: City; floor: string | null; reload: Reload; onClose: () => void; onStatus: (s: RunStatus | null) => void
+  onSetup: () => void
 }) {
   const [tab, setTab] = useState<'chat' | 'about'>('chat')
   const [creds, setCreds] = useState<Credential[] | null>(null)
@@ -25,7 +26,7 @@ export function AgentView({ agent, city, floor, reload, onClose, onStatus }: {
         <button className="x" onClick={onClose} aria-label="Close">×</button>
       </div>
       <aside className="side side-left">
-        <About agent={agent} city={city} floor={floor} creds={creds} reload={reload} onClose={onClose} />
+        <About agent={agent} city={city} floor={floor} creds={creds} reload={reload} onClose={onClose} onSetup={onSetup} />
       </aside>
       <aside className="side side-right">
         <ChatPanel key={agent.id} agent={agent} hasModel={creds === null || creds.length > 0} onStatus={onStatus} />
@@ -34,7 +35,9 @@ export function AgentView({ agent, city, floor, reload, onClose, onStatus }: {
   )
 }
 
-function About({ agent, city, floor, creds, reload, onClose }: { agent: MyAgent; city: City; floor: string | null; creds: Credential[] | null; reload: Reload; onClose: () => void }) {
+function About({ agent, city, floor, creds, reload, onClose, onSetup }: {
+  agent: MyAgent; city: City; floor: string | null; creds: Credential[] | null; reload: Reload; onClose: () => void; onSetup: () => void
+}) {
   const [open, setOpen] = useState<FileFull | null>(null)
   const [manifest, setManifest] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,36 +81,41 @@ function About({ agent, city, floor, creds, reload, onClose }: { agent: MyAgent;
         <button className="x desktop-only" onClick={onClose} aria-label="Close">×</button>
       </div>
       {agent.description && <p className="tag">{agent.description}</p>}
+      <button className="primary setup-btn" onClick={onSetup}>{agent.files.some(f => f.path === 'about-me.md') ? 'Personalize it' : 'Make it your own'}</button>
 
       <h3>What it can do</h3>
       <ul className="can">
-        <li>📄 Reads its {own.length ? `${own.length} file${own.length === 1 ? '' : 's'}` : 'instructions'}
+        <li>📄 Knows {own.length ? `${own.length} file${own.length === 1 ? '' : 's'}` : 'its instructions'}
           {shared.length > 0 && <> and your {shared.length} shared file{shared.length === 1 ? '' : 's'}</>}</li>
-        <li>✍️ Writes and edits files while it works</li>
-        {tools.map(c => {
-          const g = grants.filter(x => x.connection_id === c.id)
-          const n = g.some(x => x.tool_name === null) ? 'all its tools' : `${g.length} tool${g.length === 1 ? '' : 's'}`
-          return <li key={c.id}>🔌 Uses <b>{c.name}</b> ({n}) <span className={`dot ${c.status}`} /></li>
-        })}
+        {agent.files.some(f => f.path === 'about-me.md') && <li>🙋 Knows about you</li>}
+        {tools.map(c => <li key={c.id}>🔌 Uses <b>{c.name}</b> <span className={`dot ${c.status}`} /></li>)}
         {team.length > 0 && <li>👥 Hands work to {team.map(a => a.name).join(', ')}{!claude && ' (needs a Claude model)'}</li>}
-        {agent.can_use_public && publicItems > 0 && <li>🌐 Reads {publicItems} thing{publicItems === 1 ? '' : 's'} people shared publicly</li>}
         {creds !== null && (cred
-          ? <li>🧠 Thinks with <b>{cred.label}</b>{agent.model ? ` · ${agent.model}` : ''}</li>
-          : <li className="warn">🧠 No model yet: add your Claude or ChatGPT account under your @username → Models</li>)}
+          ? <li>🧠 Thinks with <b>{cred.label}</b></li>
+          : <li className="warn">🧠 Needs an AI account to think with: use the button above</li>)}
       </ul>
 
-      <h3>What it knows · {own.length + 1} files</h3>
+      <h3>Apps it can use</h3>
+      {city.connections.length === 0 ? <p className="empty">No apps connected yet. Use <b>Make it your own</b> or <b>Connect apps</b> at the top.</p> :
+        <ul className="list tools">
+          {city.connections.map(c => {
+            const any = grants.some(g => g.connection_id === c.id)
+            return <li key={c.id} className="tool">
+              <label className="grow"><input type="checkbox" checked={any}
+                onChange={() => run(() => api.setGrants(agent.id, any ? grants.filter(g => g.connection_id !== c.id) : [...grants, { connection_id: c.id, tool_name: null }]))} />
+                <b>{c.name}</b> <span className={`dot ${c.status}`} /></label>
+            </li>
+          })}
+        </ul>}
+
+      <h3>What it knows</h3>
       <ul className="list">
         {definition && <li onClick={() => setOpen(definition)}>
-          <span className="grow"><b>Instructions</b> <span className="meta">AGENT.md</span></span>
-          <span className="meta">{definition.lines} ln</span></li>}
+          <span className="grow"><b>Its instructions</b></span><span className="meta">{definition.lines} lines</span></li>}
         {[...own].sort((a, b) => b.lines - a.lines).map(f => (
           <li key={f.id} onClick={() => setOpen(f)}>
-            <span className="grow">{f.path}{f.share_id ? <span className="mini">in library</span> : null}</span>
-            <span className="meta">{f.lines} ln</span>
-            <button className="tiny" title={f.share_id ? 'Remove from the public library' : 'Share in the public library'}
-              onClick={e => { e.stopPropagation(); run(() => f.share_id ? api.unshare(f.share_id) : api.share({ kind: 'file', file_id: f.id })) }}>
-              {f.share_id ? 'unshare' : 'share'}</button>
+            <span className="grow">{f.path === 'about-me.md' ? <b>About you</b> : f.path}</span>
+            <span className="meta">{f.lines} lines</span>
             <button className="tiny" title="Delete file" onClick={e => { e.stopPropagation(); if (confirm(`Delete ${f.path}?`)) run(() => api.deleteFile(agent.id, f.id)) }}>✕</button>
           </li>))}
       </ul>
@@ -116,59 +124,61 @@ function About({ agent, city, floor, creds, reload, onClose }: { agent: MyAgent;
           const files = await readFiles(e.target.files)
           run(async () => { for (const f of files) await api.putFile(agent.id, f.path, f.content) })
         }} /></label>
-      {shared.length > 0 && <details className="shared-pick">
-        <summary className="meta">+ {shared.length} shared file{shared.length === 1 ? '' : 's'} all your agents read</summary>
-        <ul className="list">{shared.map(f => <li key={f.id}><span className="grow">{f.path}</span><span className="meta">{f.lines} ln</span></li>)}</ul>
-      </details>}
 
-      <h3>Tools it may use</h3>
-      {city.connections.length === 0 ? <p className="empty">No tools connected yet. Add one with <b>+ Tool</b> (for example Notion or GitHub).</p> :
-        <ul className="list tools">
-          {city.connections.map(c => (
-            <li key={c.id} className="tool">
-              <label className="grow"><input type="checkbox" checked={has(c, null)} onChange={() => toggle(c, null)} />
-                <b>{c.name}</b> <span className={`dot ${c.status}`} /> <span className="meta">{has(c, null) ? 'all tools' : STATUS_LABEL[c.status]}</span></label>
-              {!has(c, null) && c.tools.length > 0 && <div className="subtools">
-                {c.tools.map(t => <label key={t.name} title={t.description}><input type="checkbox" checked={has(c, t.name)} onChange={() => toggle(c, t.name)} />{t.name}</label>)}
-              </div>}
-            </li>))}
-        </ul>}
-
-      <h3>Team · agents it can call</h3>
-      {others.length === 0 ? <p className="empty">Add more agents and this one can hand work to them.</p> : <>
+      {others.length > 0 && <>
+        <h3>Its team</h3>
         <ul className="list tools">{others.map(o => (
           <li key={o.id} className="tool"><label className="grow"><input type="checkbox" checked={agent.team.includes(o.id)}
             onChange={() => run(() => api.setTeam(agent.id, agent.team.includes(o.id) ? agent.team.filter(i => i !== o.id) : [...agent.team, o.id]))} />
             <b>{o.name}</b> <span className="meta wrap">{o.description.slice(0, 80)}</span></label></li>))}</ul>
-        <p className="hint">Like Claude Code sub-agents: it can hand a job to them, and each keeps only its own files and tools.
-          {!claude && ' Needs a Claude model: on ChatGPT/Codex it works alone.'}</p>
+        <p className="hint">It can hand a job to anyone ticked here.{!claude && ' Needs a Claude model: on ChatGPT it works alone.'}</p>
       </>}
 
-      <ModelPicker agent={agent} run={run} />
+      <details className="more-settings">
+        <summary>More settings</summary>
+        <ModelPicker agent={agent} run={run} />
 
-      <h3>Its building</h3>
-      <div className="row tight">
-        <select value={agent.building || ''} onChange={e => run(() => api.updateAgent(agent.id, { building: e.target.value }))}>
-          <option value="">Automatic ({AGENT_BUILDINGS[agentBuilding({ ...agent, building: '' })]})</option>
-          {Object.entries(AGENT_BUILDINGS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-      </div>
+        <h3>Its building on the map</h3>
+        <div className="row tight">
+          <select value={agent.building || ''} onChange={e => run(() => api.updateAgent(agent.id, { building: e.target.value }))}>
+            <option value="">Automatic ({AGENT_BUILDINGS[agentBuilding({ ...agent, building: '' })]})</option>
+            {Object.entries(AGENT_BUILDINGS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
 
-      <h3>Settings</h3>
-      <label className="check"><input type="checkbox" checked={agent.can_use_public}
-        onChange={e => run(() => api.updateAgent(agent.id, { can_use_public: e.target.checked }))} />
-        May read what others shared in the public district</label>
-      <div className="row">
-        {agent.share_id
-          ? <button onClick={() => run(() => api.unshare(agent.share_id!))}>Make private</button>
-          : <><input className="note" placeholder="Note for the public (optional)" value={note} onChange={e => setNote(e.target.value)} />
-            <button onClick={() => run(() => api.share({ kind: 'agent', agent_id: agent.id, note }))}>Share publicly</button></>}
-      </div>
-      <div className="row">
-        <button onClick={() => setManifest(true)} title="Exactly what its sandbox is handed">Under the hood</button>
-        <span className="grow" />
-        <button className="danger" onClick={() => { if (confirm(`Delete ${agent.name} and its files?`)) run(async () => { await api.deleteAgent(agent.id); onClose() }) }}>Delete</button>
-      </div>
+        {tools.length > 0 && <>
+          <h3>Pick individual app tools</h3>
+          <ul className="list tools">{tools.map(c => (
+            <li key={c.id} className="tool"><b>{c.name}</b>
+              <div className="subtools">{c.tools.map(t => <label key={t.name} title={t.description}>
+                <input type="checkbox" checked={has(c, null) || has(c, t.name)} onChange={() => has(c, null)
+                  ? run(() => api.setGrants(agent.id, [...grants.filter(g => g.connection_id !== c.id),          // all but this one
+                    ...c.tools.filter(x => x.name !== t.name).map(x => ({ connection_id: c.id, tool_name: x.name }))]))
+                  : toggle(c, t.name)} />{t.name}</label>)}
+                {c.tools.length === 0 && <span className="meta">{STATUS_LABEL[c.status]}</span>}</div></li>))}</ul>
+        </>}
+
+        {shared.length > 0 && <>
+          <h3>Shared files it also reads</h3>
+          <ul className="list">{shared.map(f => <li key={f.id}><span className="grow">{f.path}</span><span className="meta">{f.lines} lines</span></li>)}</ul>
+        </>}
+
+        <h3>Sharing</h3>
+        <label className="check"><input type="checkbox" checked={agent.can_use_public}
+          onChange={e => run(() => api.updateAgent(agent.id, { can_use_public: e.target.checked }))} />
+          May read what other people shared publicly{publicItems > 0 ? ` (${publicItems})` : ''}</label>
+        <div className="row">
+          {agent.share_id
+            ? <button onClick={() => run(() => api.unshare(agent.share_id!))}>Make private</button>
+            : <><input className="note" placeholder="Note for others (optional)" value={note} onChange={e => setNote(e.target.value)} />
+              <button onClick={() => run(() => api.share({ kind: 'agent', agent_id: agent.id, note }))}>Share publicly</button></>}
+        </div>
+        <div className="row">
+          <button onClick={() => setManifest(true)} title="Exactly what its sandbox is handed">Under the hood</button>
+          <span className="grow" />
+          <button className="danger" onClick={() => { if (confirm(`Delete ${agent.name} and its files?`)) run(async () => { await api.deleteAgent(agent.id); onClose() }) }}>Delete</button>
+        </div>
+      </details>
       <Err error={error} />
       {open && <FileModal file={open} editable onClose={() => setOpen(null)}
         onSave={async content => { await api.putFile(agent.id, open.path, content); await reload(); setOpen(null) }} />}

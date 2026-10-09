@@ -3,6 +3,7 @@ name: standup-writer
 description: Turns messy notes, commits or a brain dump into a crisp daily standup: done, next, blocked.
 tags: productivity, team, writing
 author: agent-town
+ask: What's your name and role? | Who reads your standups, and where do you post them?
 color: #d6a23a
 building: office
 tools: github, linear

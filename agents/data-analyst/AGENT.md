@@ -3,6 +3,7 @@ name: data-analyst
 description: Answers questions about your numbers with SQL, explains what changed and why, and flags shaky data.
 tags: data, analytics, sql
 author: agent-town
+ask: What does your company or product do? | Which numbers matter most to you (signups, revenue, …)? | What's your main table or data source called?
 color: #4fae6a
 building: observatory
 tools: postgres

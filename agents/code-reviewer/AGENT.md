@@ -3,6 +3,7 @@ name: code-reviewer
 description: Reviews a diff or pull request for real bugs first, then risky changes, then cleanups. Short, specific, ranked.
 tags: engineering, code review, github
 author: agent-town
+ask: What languages and frameworks do you mostly use? | Anything your team is strict about (style, tests, security)?
 color: #3f8fd2
 building: forge
 tools: github

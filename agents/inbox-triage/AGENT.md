@@ -3,6 +3,7 @@ name: inbox-triage
 description: Sorts an inbox into reply now, later, read, and ignore, and drafts the replies that matter. Never sends.
 tags: email, personal, productivity
 author: agent-town
+ask: What's your name, and what do you do? | Whose emails always matter most to you? | How do you like your replies to sound?
 color: #c8579b
 building: cottage
 tools: gmail

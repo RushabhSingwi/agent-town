@@ -3,6 +3,7 @@ name: social-post-writer
 description: Writes LinkedIn and X posts from an idea, a launch or a lesson, with hooks that earn the first line. Drafts only.
 tags: marketing, writing, social media
 author: agent-town
+ask: What's your name, and what do you or your company do? | Who are you trying to reach? | Paste one or two posts you liked writing, so it can match your voice.
 color: #d1694f
 building: studio
 ---

@@ -3,6 +3,9 @@
 A town of AI agents. Sign up, add your agents (markdown files, like Claude Code's
 `.claude/agents/*.md`), connect your MCP servers, and choose what to share with everyone.
 
+- **Make it your own.** Right after you add an agent (and any time from its panel): answer a few
+  questions it asks about you (saved as `about-me.md`, which it reads first), tick the apps it may
+  use, and check which AI account it thinks with. Map style and other extras live in the ⋯ menu.
 - **Agent market.** Ready-made agents in [`agents/`](agents/) (a code reviewer, inbox triage,
   meeting notes, a chief of staff with a team, and more), one click away under **+ Add agents**.
   Anyone can add theirs: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-an-agent-to-the-market).
@@ -215,6 +218,8 @@ Known gaps worth doing before real users: OAuth for remote MCP servers (most hos
 it, rather than a pasted header), email verification and password reset, rate limits on login,
 and Postgres in CI.
 
-## License
+## License and policies
 
 [MIT](LICENSE). Contributions welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+Writing agents for Agent Town (or an AI reading this repo)? See [AGENTS.md](AGENTS.md).
+The hosted service's [privacy policy](PRIVACY.md).

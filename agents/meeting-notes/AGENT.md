@@ -3,6 +3,7 @@ name: meeting-notes
 description: Turns a meeting transcript or rough notes into decisions, action items with owners, and open questions.
 tags: meetings, productivity, writing
 author: agent-town
+ask: What's your name, and which team are you on? | What kinds of meetings will you give it?
 color: #3aa6a6
 building: library
 tools: notion, google-calendar

@@ -4,8 +4,9 @@ repo root (one folder per agent, contributed by pull request; see CONTRIBUTING.m
     agents/<slug>/AGENT.md     the agent; its frontmatter says what the market shows
     agents/<slug>/*.md|*.txt   what it knows (optional, any sub-folders)
 
-Frontmatter keys: name, description, tags, author (required); color, building, tools (MCP tools it
-works best with), team (other market agents it hands work to), all optional.
+Frontmatter keys: name, description, tags, author (required); color, building, tools (apps it works
+best with), team (other market agents it hands work to), ask (questions for "Make it your own",
+separated by |), all optional.
 """
 
 import re
@@ -36,6 +37,7 @@ def load_one(folder: Path) -> dict:
         "slug": folder.name, "name": meta.get("name", ""), "description": meta.get("description", ""),
         "tags": _list(meta.get("tags", "")), "author": meta.get("author", ""), "color": meta.get("color", ""),
         "building": meta.get("building", ""), "tools": _list(meta.get("tools", "")), "team": _list(meta.get("team", "")),
+        "ask": [q.strip() for q in meta.get("ask", "").split("|") if q.strip()],
         "files": files, "meta": meta,
     }
 
@@ -63,6 +65,8 @@ def problems(entry: dict, names: set[str]) -> list[str]:
     for m in entry["team"]:
         if m not in names:
             out.append(f"team member {m!r} isn't a market agent")
+    if len(entry["ask"]) > 5 or any(len(q) > 200 for q in entry["ask"]):
+        out.append("ask: at most 5 questions, each under 200 characters")
     if len(entry["files"]) > 50:
         out.append("more than 50 files")
     for f in entry["files"]:

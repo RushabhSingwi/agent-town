@@ -107,6 +107,8 @@ def system_prompt(m: dict, files: list[str]) -> str:
     """The agent's own instructions, plus where its files are. Instructions written for another
     setup may link `../../content/a.md`; the list lets it find content/a.md here."""
     extra = "\n\n---\nYour files are in the current directory."
+    if "about-me.md" in files:
+        extra += " about-me.md is what the person you work for told you about themselves: read it first and use it."
     if files:
         shown = files[:200]
         extra += " Read the ones your instructions mention before you start:\n" + "\n".join(f"- {f}" for f in shown)

@@ -3,6 +3,7 @@ name: support-replier
 description: Drafts friendly, accurate replies to customer questions from your FAQ and product notes, and knows when to escalate.
 tags: support, customers, writing
 author: agent-town
+ask: What's your product, in one line? | What's your support tone (friendly, formal, playful)? | Anything customers ask a lot that isn't in the FAQ yet?
 color: #7f8a99
 building: tavern
 tools: slack, gmail

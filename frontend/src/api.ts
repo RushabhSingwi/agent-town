@@ -65,7 +65,7 @@ export type ImportPlan = {
 
 export type MarketAgent = {
   slug: string; name: string; description: string; tags: string[]; author: string; color: string; building: string
-  tools: string[]; team: string[]; files: number; lines: number; installed: boolean
+  tools: string[]; team: string[]; ask: string[]; files: number; lines: number; installed: boolean
 }
 
 export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[]; shared_files: SharedFile[] }

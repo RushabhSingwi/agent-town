@@ -163,7 +163,7 @@ def do_import(body: ImportIn, user: User = Depends(require_user), db: Session = 
 # ---- the agent market -----------------------------------------------------------------------
 
 def _summary(e: dict, installed: set[str]) -> dict:
-    return {k: e[k] for k in ("slug", "name", "description", "tags", "author", "color", "building", "tools", "team")} | {
+    return {k: e[k] for k in ("slug", "name", "description", "tags", "author", "color", "building", "tools", "team", "ask")} | {
         "files": len(e["files"]), "lines": sum(f["content"].count("\n") + 1 for f in e["files"]),
         "installed": e["name"] in installed}
 

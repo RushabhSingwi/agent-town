@@ -3,6 +3,7 @@ name: research-assistant
 description: Answers a question from sources, says how sure it is, and shows where every claim came from.
 tags: research, analysis, writing
 author: agent-town
+ask: What field or topics will you ask about most? | How much detail do you usually want?
 color: #6a7fd1
 building: lab
 ---
