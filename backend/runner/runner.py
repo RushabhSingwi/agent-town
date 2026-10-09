@@ -86,6 +86,23 @@ def write_files(m: dict) -> list[str]:
     return written
 
 
+def write_team(m: dict) -> list[dict]:
+    """Each teammate's files go under team/<slug>/, so they never mix with the lead's."""
+    out = []
+    for t in m.get("team", []):
+        base = WORK / "team" / t["slug"]
+        paths = []
+        for f in t["files"]:
+            dest = (base / f["path"]).resolve()
+            if base.resolve() not in dest.parents:
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(f["content"])
+            paths.append(f"team/{t['slug']}/{f['path']}")
+        out.append({**t, "paths": paths})
+    return out
+
+
 def system_prompt(m: dict, files: list[str]) -> str:
     """The agent's own instructions, plus where its files are. Instructions written for another
     setup may link `../../content/a.md`; the list lets it find content/a.md here."""
@@ -97,13 +114,16 @@ def system_prompt(m: dict, files: list[str]) -> str:
             extra += f"\n- … and {len(files) - len(shown)} more"
     if m["public"]:
         extra += "\nThings other people shared for agents to read are under public/<owner>/."
+    if m.get("team"):
+        extra += ("\n\nYour team (hand work to them with the Task tool; each has its own files and tools):\n"
+                  + "\n".join(f"- {t['slug']}: {t['description'] or t['name']}" for t in m["team"]))
     return m["instructions"] + extra
 
 
-def servers(m: dict, auth_headers: dict) -> list[dict]:
+def servers(m: dict, auth_headers: dict, tools: list[dict] | None = None) -> list[dict]:
     """The MCP servers this agent was granted, and which of their tools (None: all of them)."""
     out = []
-    for t in m["tools"]:
+    for t in m["tools"] if tools is None else tools:
         if not t["usable"]:
             continue
         s = {"name": server_name(t["connection"]), "transport": t["transport"], "url": t["url"],
@@ -136,23 +156,41 @@ class Claude:
     """Claude Code in print mode. Tools: file tools in the working directory (plus Bash in a real
     sandbox) and exactly the granted MCP tools. dontAsk mode refuses anything not allowed."""
 
-    def __init__(self, m: dict, cred: dict, auth_headers: dict, files: list[str]):
+    def __init__(self, m: dict, cred: dict, auth_headers: dict, files: list[str], team: list[dict] | None = None):
         self.model, self.session, self.system = cred["model"], None, system_prompt(m, files)
         self.env = {**os.environ}
         for k in ("AGENTTOWN_RUN_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"):
             self.env.pop(k, None)
         self.env["ANTHROPIC_API_KEY" if cred["kind"] == "api_key" else "CLAUDE_CODE_OAUTH_TOKEN"] = cred["secret"]
         builtin = ["Read", "Write", "Edit", "Glob", "Grep"] + (["Bash"] if ALLOW_SHELL else [])
-        self.tools, allowed, config = builtin, list(builtin), {}
-        for s in servers(m, auth_headers):
-            if s["transport"] == "http":
-                config[s["name"]] = {"type": "http", "url": s["url"],
-                                     **({"headers": {"Authorization": s["auth"]}} if s["auth"] else {})}
-            else:
-                argv = shlex.split(s["command"] or "")
-                config[s["name"]] = {"type": "stdio", "command": argv[0], "args": argv[1:]}
-            allowed += [f"mcp__{s['name']}"] if s["tools"] is None else [f"mcp__{s['name']}__{t}" for t in s["tools"]]
-        self.allowed = allowed
+        self.tools, allowed, config = list(builtin), list(builtin), {}
+
+        def add(srv: list[dict]) -> list[str]:
+            names = []
+            for s in srv:
+                if s["name"] not in config:
+                    if s["transport"] == "http":
+                        config[s["name"]] = {"type": "http", "url": s["url"],
+                                             **({"headers": {"Authorization": s["auth"]}} if s["auth"] else {})}
+                    else:
+                        argv = shlex.split(s["command"] or "")
+                        config[s["name"]] = {"type": "stdio", "command": argv[0], "args": argv[1:]}
+                names += [f"mcp__{s['name']}"] if s["tools"] is None else [f"mcp__{s['name']}__{t}" for t in s["tools"]]
+            return names
+
+        allowed += add(servers(m, auth_headers))
+        if team:                                   # teammates become Claude Code sub-agents in .claude/agents/
+            self.tools.append("Task"); allowed.append("Task")
+            agents_dir = WORK / ".claude" / "agents"
+            agents_dir.mkdir(parents=True, exist_ok=True)
+            for t in team:
+                own = add(servers(m, auth_headers, t["tools"]))
+                allowed += own
+                desc = (t["description"] or t["name"]).replace("\n", " ")
+                body = t["instructions"] + ("\n\nYour files are in team/" + t["slug"] + "/:\n" + "\n".join(f"- {p}" for p in t["paths"]) if t["paths"] else "")
+                (agents_dir / f"{t['slug']}.md").write_text(
+                    f"---\nname: {t['slug']}\ndescription: {json.dumps(desc)}\ntools: {', '.join(builtin + own)}\n---\n\n{body}\n")
+        self.allowed = list(dict.fromkeys(allowed))
         self.mcp = HOME / "mcp.json"
         self.mcp.write_text(json.dumps({"mcpServers": config}))
 
@@ -286,7 +324,13 @@ def main() -> None:
     m, cred = setup["manifest"], setup["credential"]
     HOME.mkdir(parents=True, exist_ok=True)
     files = write_files(m)
-    engine = (Claude if cred["provider"] == "anthropic" else Codex)(m, cred, setup["auth_headers"], files)
+    team = write_team(m)
+    if cred["provider"] == "anthropic":
+        engine = Claude(m, cred, setup["auth_headers"], files, team)
+    else:
+        engine = Codex({**m, "team": []}, cred, setup["auth_headers"], files)
+        if team:
+            emit("error", detail="Teams need a Claude model for now: this agent runs on Codex, so it works alone.")
     emit("status", status="ready", detail=f"{m['agent']['name']} is ready")
     cursor, last_turn = 0, time.monotonic()
     while True:

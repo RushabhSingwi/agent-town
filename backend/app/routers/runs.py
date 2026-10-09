@@ -237,7 +237,7 @@ def runtime_setup(r: Run = Depends(current_run), db: Session = Depends(get_db)):
         raise HTTPException(409, "No usable model credential")
     m = build_manifest(db, r.agent)
     headers = {}
-    for t in m["tools"]:
+    for t in m["tools"] + [t for member in m["team"] for t in member["tools"]]:
         c = db.get(McpConnection, t["connection_id"])
         if c and c.auth_header_enc:
             headers[str(c.id)] = decrypt(c.auth_header_enc)

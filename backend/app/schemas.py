@@ -51,6 +51,10 @@ class GrantsIn(BaseModel):
     grants: list[GrantIn] = Field(max_length=500)
 
 
+class TeamIn(BaseModel):
+    member_ids: list[int] = Field(max_length=50)
+
+
 class McpIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     transport: Literal["http", "stdio"] = "http"

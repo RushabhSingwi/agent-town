@@ -206,3 +206,20 @@ def test_silent_sandbox_is_reaped(make_user, client, fake_sandbox, db_session):
     r = alice.get(f"/api/runs/{run_id}").json()
     assert r["status"] == "error" and "stopped responding" in r["detail"]
     assert fake_sandbox.stopped == [f"fake-{run_id}"]
+
+
+def test_sandbox_gets_the_teams_tool_credentials(make_user, client, fake_sandbox, monkeypatch):
+    from app import mcp_client
+    from app.routers import mcp as mcp_router
+    monkeypatch.setattr(mcp_router.mcp_client, "check", lambda *a, **k: mcp_client.CheckResult("connected", "ok", "s", "1", [{"name": "t"}]))
+    alice = make_user("alice")
+    lead = setup_agent(alice)
+    member = alice.post("/api/agents", json={"markdown": "---\nname: helper\n---\nHelp."}).json()
+    conn = alice.post("/api/mcp", json={"name": "mail", "url": "https://mail.example/mcp", "auth_header": "Bearer m"}).json()
+    alice.put(f"/api/agents/{member['id']}/grants", json={"grants": [{"connection_id": conn["id"], "tool_name": None}]})
+    alice.put(f"/api/agents/{lead['id']}/team", json={"member_ids": [member["id"]]})
+    alice.post(f"/api/agents/{lead['id']}/runs")
+    setup = box(client, fake_sandbox.started[0][1]).get("/api/runtime/setup").json()
+    assert [t["slug"] for t in setup["manifest"]["team"]] == ["helper"]
+    assert setup["manifest"]["tools"] == []                          # the lead itself has no tools…
+    assert setup["auth_headers"] == {str(conn["id"]): "Bearer m"}     # …but its teammate's credentials come along

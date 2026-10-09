@@ -66,6 +66,9 @@ function About({ agent, city, floor, creds, reload, onClose }: { agent: MyAgent;
   const cred = creds && (creds.find(c => c.id === agent.model_credential_id) ?? creds.find(c => c.is_default))
   const publicItems = city.public.filter(s => s.allow_agent_use && s.agent?.id !== agent.id).length
   const definition = agent.files.find(f => f.path === 'AGENT.md')
+  const others = city.agents.filter(a => a.id !== agent.id)
+  const team = others.filter(a => agent.team.includes(a.id))
+  const claude = !cred || cred.provider === 'anthropic'
 
   return (
     <div className="about">
@@ -86,6 +89,7 @@ function About({ agent, city, floor, creds, reload, onClose }: { agent: MyAgent;
           const n = g.some(x => x.tool_name === null) ? 'all its tools' : `${g.length} tool${g.length === 1 ? '' : 's'}`
           return <li key={c.id}>🔌 Uses <b>{c.name}</b> ({n}) <span className={`dot ${c.status}`} /></li>
         })}
+        {team.length > 0 && <li>👥 Hands work to {team.map(a => a.name).join(', ')}{!claude && ' (needs a Claude model)'}</li>}
         {agent.can_use_public && publicItems > 0 && <li>🌐 Reads {publicItems} thing{publicItems === 1 ? '' : 's'} people shared publicly</li>}
         {creds !== null && (cred
           ? <li>🧠 Thinks with <b>{cred.label}</b>{agent.model ? ` · ${agent.model}` : ''}</li>
@@ -129,6 +133,16 @@ function About({ agent, city, floor, creds, reload, onClose }: { agent: MyAgent;
               </div>}
             </li>))}
         </ul>}
+
+      <h3>Team · agents it can call</h3>
+      {others.length === 0 ? <p className="empty">Add more agents and this one can hand work to them.</p> : <>
+        <ul className="list tools">{others.map(o => (
+          <li key={o.id} className="tool"><label className="grow"><input type="checkbox" checked={agent.team.includes(o.id)}
+            onChange={() => run(() => api.setTeam(agent.id, agent.team.includes(o.id) ? agent.team.filter(i => i !== o.id) : [...agent.team, o.id]))} />
+            <b>{o.name}</b> <span className="meta wrap">{o.description.slice(0, 80)}</span></label></li>))}</ul>
+        <p className="hint">Like Claude Code sub-agents: it can hand a job to them, and each keeps only its own files and tools.
+          {!claude && ' Needs a Claude model: on ChatGPT/Codex it works alone.'}</p>
+      </>}
 
       <ModelPicker agent={agent} run={run} />
 

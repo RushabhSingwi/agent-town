@@ -9,7 +9,7 @@ from ..auth import current_user, require_user
 from ..db import get_db
 from ..manifest import build_manifest
 from ..models import DEFINITION, Agent, AgentFile, AgentToolGrant, McpConnection, ModelCredential, PublicShare, User
-from ..schemas import AgentIn, AgentPatch, FileIn, GrantsIn
+from ..schemas import AgentIn, AgentPatch, FileIn, GrantsIn, TeamIn
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -159,6 +159,20 @@ def set_grants(agent_id: int, body: GrantsIn, user: User = Depends(require_user)
     a.grants = [x for x in a.grants if (x.connection_id, x.tool_name) in wanted]
     have = {(x.connection_id, x.tool_name) for x in a.grants}
     a.grants += [AgentToolGrant(connection_id=c, tool_name=t) for c, t in sorted(wanted - have, key=str)]
+    db.commit()
+    return owner_view(db, a)
+
+
+@router.put("/{agent_id}/team")
+def set_team(agent_id: int, body: TeamIn, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Which of your other agents this one may call. Only your own, and never itself."""
+    a = own_agent(db, user, agent_id)
+    members = []
+    for mid in dict.fromkeys(body.member_ids):
+        if mid == a.id:
+            raise HTTPException(422, "An agent can't be on its own team")
+        members.append(own_agent(db, user, mid))
+    a.team = members
     db.commit()
     return owner_view(db, a)
 

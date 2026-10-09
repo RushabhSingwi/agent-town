@@ -112,3 +112,63 @@ def test_import_rejects_unknown_sources(make_user):
     alice = make_user("alice")
     r = alice.post("/api/import", json={"files": upload({"a.md": "x"}), "agents": [{"source": "nope.md", "name": "n"}]})
     assert r.status_code == 422
+
+
+TEAM_FOLDER = {
+    "crew/agents/boss.md": "---\nname: boss\ndescription: Do not use as an orchestrator here.\n---\nGuard: go to the main thread.\n",
+    "crew/commands/boss.md": "# /boss — run the crew\n\nYou lead. Read `notes/priorities.md`.\n\n"
+                             "Route each job: launch scout for research and scribe for writing.\n" + "More detail.\n" * 10,
+    "crew/agents/scout.md": "---\nname: scout\ndescription: Finds things. Leaf.\n---\nLeaf. Do not spawn subagents. Report to boss.\n",
+    "crew/agents/scribe.md": "---\nname: scribe\ndescription: Writes things.\n---\nYou are a leaf: write, then return. Boss reads it.\n",
+    "crew/commands/sync.md": "# /sync — back up and pull\n",
+    "crew/notes/priorities.md": "1. Ship.\n",
+}
+
+
+def test_command_beats_a_guard_and_suggests_a_team():
+    p = importer.plan(TEAM_FOLDER)
+    agents = {a["name"]: a for a in p["agents"]}
+    assert set(agents) == {"boss", "scout", "scribe"}               # /sync is a command, not an agent
+    boss = agents["boss"]
+    assert boss["source"] == "commands/boss.md"                     # the guard file loses
+    assert [x["kind"] for x in boss["alternatives"]] == ["agent", "command"]
+    assert boss["description"] == "run the crew"
+    assert [f["path"] for f in boss["files"]] == ["notes/priorities.md"]
+    assert sorted(boss["team"]) == ["scout", "scribe"]
+    assert agents["scout"]["team"] == [] and agents["scribe"]["team"] == []   # leaves name the boss but lead nobody
+    assert "agents/boss.md" in {s["path"] for s in p["skipped"]}
+
+    # the person can pick the agent file instead
+    p2 = importer.plan(TEAM_FOLDER, choices={"boss": "agents/boss.md"})
+    assert next(a for a in p2["agents"] if a["name"] == "boss")["source"] == "agents/boss.md"
+
+
+def test_import_sets_the_team_and_the_run_gets_it(make_user):
+    alice = make_user("alice")
+    p = alice.post("/api/import/preview", json={"files": upload(TEAM_FOLDER)}).json()
+    body = {"files": upload(TEAM_FOLDER), "shared": [s["source"] for s in p["shared"]],
+            "agents": [{"source": a["source"], "name": a["name"], "files": [f["source"] for f in a["files"]], "team": a["team"]}
+                       for a in p["agents"]]}
+    r = alice.post("/api/import", json=body).json()
+    boss = next(a for a in r["created"] if a["name"] == "boss")
+    assert boss["description"] == "run the crew"
+    names = {a["id"]: a["name"] for a in r["created"]}
+    assert sorted(names[i] for i in boss["team"]) == ["scout", "scribe"]
+    m = alice.get(f"/api/agents/{boss['id']}/manifest").json()
+    assert sorted(t["slug"] for t in m["team"]) == ["scout", "scribe"]
+    assert m["instructions"].startswith("# /boss")
+    scout = next(t for t in m["team"] if t["slug"] == "scout")
+    assert scout["instructions"].startswith("Leaf.") and scout["files"] == []
+
+
+def test_team_is_your_own_agents_only(make_user):
+    alice, bob = make_user("alice"), make_user("bob")
+    a = alice.post("/api/agents", json={"markdown": AGENT.format(name="lead", desc="", body="x")}).json()
+    b = alice.post("/api/agents", json={"markdown": AGENT.format(name="helper", desc="", body="x")}).json()
+    theirs = bob.post("/api/agents", json={"markdown": AGENT.format(name="spy", desc="", body="x")}).json()
+    assert alice.put(f"/api/agents/{a['id']}/team", json={"member_ids": [theirs["id"]]}).status_code == 404
+    assert alice.put(f"/api/agents/{a['id']}/team", json={"member_ids": [a["id"]]}).status_code == 422
+    assert bob.put(f"/api/agents/{a['id']}/team", json={"member_ids": []}).status_code == 404
+    assert alice.put(f"/api/agents/{a['id']}/team", json={"member_ids": [b["id"], b["id"]]}).json()["team"] == [b["id"]]
+    alice.delete(f"/api/agents/{b['id']}")                          # deleting a member takes it off the team
+    assert alice.get(f"/api/agents/{a['id']}").json()["team"] == []

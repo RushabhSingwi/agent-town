@@ -415,7 +415,7 @@ export class CityView {
       if (w.from.key !== this.selected && w.to.key !== this.selected) continue
       const a: Pt = [w.from.door[0] * T, w.from.door[1] * T], b: Pt = [w.to.door[0] * T, w.to.door[1] * T]
       const mid: Pt = [(a[0] + b[0]) / 2, Math.min(a[1], b[1]) - 40]
-      c.strokeStyle = css(STATUS_COLOR[w.status], 1, 0.9); c.lineWidth = 2
+      c.strokeStyle = w.team ? 'rgba(190,140,255,0.95)' : css(STATUS_COLOR[w.status], 1, 0.9); c.lineWidth = 2
       c.setLineDash(w.status === 'connected' ? [5, 4] : [2, 4]); c.lineDashOffset = -now / 50
       c.beginPath(); c.moveTo(a[0], a[1]); c.quadraticCurveTo(mid[0], mid[1], b[0], b[1]); c.stroke()
     }

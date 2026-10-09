@@ -4,6 +4,7 @@ users ─┬─ sessions                 browser logins (only a hash of the cook
        ├─ api_tokens               "Authorization: Bearer at_…" for scripts and sandboxes (hashed too)
        ├─ model_credentials        the user's own API key / subscription token, encrypted
        ├─ agents ─┬─ agent_files    the agent's markdown: AGENT.md plus any knowledge files
+       │          ├─ agent_team     which of the owner's other agents it may call (its sub-agents)
        │          └─ agent_tool_grants ──┐  which tools this agent may use
        ├─ mcp_connections ─ mcp_tools ◄──┘  a user's MCP servers and the tools they expose
        ├─ shared_files              knowledge every one of the user's agents can read (private)
@@ -112,9 +113,21 @@ class Agent(Base):
         back_populates="agent", cascade="all, delete-orphan", order_by="AgentFile.path")
     grants: Mapped[list["AgentToolGrant"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan")
+    team: Mapped[list["Agent"]] = relationship(
+        secondary="agent_team", primaryjoin="Agent.id == AgentTeam.lead_id", secondaryjoin="Agent.id == AgentTeam.member_id",
+        order_by="Agent.name")
 
 
 DEFINITION = "AGENT.md"
+
+
+class AgentTeam(Base):
+    """A lead agent may call a member agent, like Claude Code's sub-agents: both are the same
+    owner's, and the member keeps only its own files and tools."""
+    __tablename__ = "agent_team"
+
+    lead_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
 
 
 class AgentFile(Base):

@@ -21,7 +21,7 @@ export type Thing = Rect & {                // x, y, w, h: the sprite's area in 
   label: string; sub?: string; status?: Status; npc?: Npc
 }
 export type Decor = { kind: 'tree' | 'bush' | 'rock' | 'lamp' | 'bench' | 'stall' | 'hay' | 'flowers' | 'fountain' | 'sign'; x: number; y: number; r: number; text?: string }
-export type Wire = { from: Thing; to: Thing; status: Status }
+export type Wire = { from: Thing; to: Thing; status: Status; team?: boolean }
 export const Ground = { Water: 0, Sand: 1, Grass: 2, Field: 3, Plaza: 4 } as const
 export type Ground = typeof Ground[keyof typeof Ground]
 export type Layout = {
@@ -282,6 +282,13 @@ export function layout(city: City): Layout {
     for (const id of new Set(c.granted_to.map(g => g.agent_id))) {
       const to = things.find(t => t.key === `agent:${id}`)
       if (from && to) wires.push({ from, to, status: c.status })
+    }
+  }
+  for (const a of city.me ? city.agents : []) {                    // a lead to each agent on its team
+    const from = things.find(t => t.key === `agent:${a.id}`)
+    for (const id of a.team ?? []) {
+      const to = things.find(t => t.key === `agent:${id}`)
+      if (from && to) wires.push({ from, to, status: 'connected', team: true })
     }
   }
   const blocks: Rect[] = things.map(t => ({ x: t.x + 0.2, y: t.y + t.h * 0.45, w: t.w - 0.4, h: t.h * 0.55 - 0.1 }))
