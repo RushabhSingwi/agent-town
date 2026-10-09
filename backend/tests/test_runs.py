@@ -265,6 +265,9 @@ def test_each_agent_has_its_own_model_and_thinking(make_user, client, fake_sandb
     run_id = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
     r = alice.patch(f"/api/agents/{a['id']}", json={"model": "claude-opus-5-5", "thinking": "max"})
     assert r.status_code == 200 and (r.json()["model"], r.json()["thinking"]) == ("claude-opus-5-5", "max")
+    assert r.json()["brain"] == {"provider": "anthropic", "model": "claude-opus-5-5", "thinking": "max"}  # draws its character
+    assert alice.get(f"/api/agents/{b['id']}").json()["brain"]["model"] == "claude-sonnet-5-5"
+    assert OAT not in str(alice.get("/api/city").json())
     assert "thinks differently" in alice.get(f"/api/runs/{run_id}").json()["detail"]   # applies from the next chat
     assert alice.patch(f"/api/agents/{a['id']}", json={"thinking": "extreme"}).status_code == 422
     assert alice.patch(f"/api/agents/{a['id']}", json={"model": "opus; rm -rf /"}).status_code == 422

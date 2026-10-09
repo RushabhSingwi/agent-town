@@ -2,6 +2,7 @@
 // (16 per tile). A Paint draws the same shapes three ways: crisp pixels with outlines (retro),
 // textured blocks (blocks), or smooth rounded shapes with soft light (fantasy).
 
+import type { BrainLook } from './brain'
 import type { RGB } from './layout'
 import { houseSize, type BuildingStyle, type HouseSpec, type ToolBuilding } from './kinds'
 import type { Theme } from './themes'
@@ -334,8 +335,8 @@ export function drawTree(p: Paint, r: number) {
 
 // ---------- NPCs: one per agent, wandering its yard ----------
 
-export type NpcLook = { color: RGB; seed: number; role: BuildingStyle | 'player' }
-export type NpcPose = { dir: 1 | -1; step: number; walking: boolean; bob: number }
+export type NpcLook = { color: RGB; seed: number; role: BuildingStyle | 'player'; brain?: BrainLook }
+export type NpcPose = { dir: 1 | -1; step: number; walking: boolean; bob: number; now?: number }
 
 /** Feet at (0,0); about 12 wide and 20 tall. */
 export function drawNpc(p: Paint, look: NpcLook, pose: NpcPose) {
@@ -343,8 +344,10 @@ export function drawNpc(p: Paint, look: NpcLook, pose: NpcPose) {
   const skin = t.skin[look.seed % t.skin.length], hair = t.hair[(look.seed >>> 3) % t.hair.length]
   const pants = mix(t.dark, look.color, 0.25), shirt = look.color
   const lift = pose.walking ? (pose.step % 2 ? 1 : 0) : 0
-  const y0 = -pose.bob
+  const y0 = -pose.bob, b = look.brain, now = pose.now ?? 0
+  if (b && b.glow) drawAura(p, b, now, false)
   p.shadow(0, 0, 6, 2, 0.25)
+  if (b?.satchel) p.box(-7, y0 - 11, b.satchel + 1, b.satchel + 3, [120, 80, 50])   // the context it carries
   // legs
   p.box(-3, y0 - 5 - lift, 2, 5 + lift, pants)
   p.box(1, y0 - 5 - (pose.walking ? 1 - lift : 0), 2, 5, pants)
@@ -373,6 +376,49 @@ export function drawNpc(p: Paint, look: NpcLook, pose: NpcPose) {
     case 'player':                                          // you: a cape and a feathered cap
       p.rect(-5, y0 - 18, 10, 2, [40, 90, 170]); p.rect(-3, y0 - 20, 6, 2, [40, 90, 170]); p.rect(4, y0 - 23, 1, 4, [240, 70, 70]); break
     default: p.rect(0, y0 - 11, 1, 4, [190, 50, 50]); break   // office: a tie
+  }
+  if (b) {
+    if (b.trim) { p.rect(-4, y0 - 6, 8, 1, b.trim); p.rect(-2, y0 - 11, 4, 1, b.trim) }   // belt and collar: what it costs
+    const hatted = look.role === 'observatory' || look.role === 'tower' || look.role === 'cottage' || look.role === 'studio'
+    if (!hatted) switch (b.gear) {
+      case 'feather': p.rect(-3, y0 - 18, 6, 1, b.aura); p.rect(2, y0 - 22, 1, 4, b.aura); p.rect(3, y0 - 23, 1, 2, b.aura, 1.2); break
+      case 'cap': p.rect(-3, y0 - 17, 6, 1, b.aura); break
+      case 'circlet': p.rect(-3, y0 - 17, 6, 1, b.trim ?? b.aura); p.rect(0, y0 - 17, 1, 1, b.aura, 1.2); break
+      case 'crown':
+        p.rect(-3, y0 - 20, 6, 2, b.trim ?? b.aura)
+        for (const x of [-3, 0, 2]) p.rect(x, y0 - 21, 1, 1, b.trim ?? b.aura)
+        p.rect(0, y0 - 19, 1, 1, [220, 60, 80]); break
+      case 'goggles': p.rect(-3, y0 - 16, 6, 2, [60, 60, 70]); p.rect(-2, y0 - 16, 1, 1, b.aura, 1.2); p.rect(1, y0 - 16, 1, 1, b.aura, 1.2); break
+    }
+    if (b.glow) drawAura(p, b, now, true)
+  }
+}
+
+/** Thinking, made visible: a glow at its feet behind it, and sparks rising off it in front. */
+function drawAura(p: Paint, b: BrainLook, now: number, front: boolean) {
+  const c = p.c
+  if (!front) {
+    const pulse = 0.75 + 0.25 * Math.sin(now / 450)
+    c.fillStyle = css(b.aura, 1, 0.11 * b.glow * pulse)
+    c.beginPath(); c.ellipse(0, -1, 6 + b.glow * 1.6, 2.5 + b.glow * 0.6, 0, 0, 7); c.fill()
+    if (b.glow >= 3) {                                    // a column of light for the deep thinkers
+      const g = c.createLinearGradient(0, 0, 0, -26)
+      g.addColorStop(0, css(b.aura, 1, 0.07 * b.glow * pulse)); g.addColorStop(1, css(b.aura, 1, 0))
+      c.fillStyle = g; c.fillRect(-7, -26, 14, 26)
+    }
+    return
+  }
+  for (let i = 0; i < b.glow; i++) {
+    const ph = (now / 1400 + i / b.glow) % 1
+    const x = Math.round(Math.sin(i * 2.3 + now / 500) * 6), y = Math.round(-4 - ph * 24)
+    c.fillStyle = css(b.aura, 1.15, 1 - ph); c.fillRect(x, y, 1, 1)
+  }
+  if (b.glow >= 5) {                                      // thinking as hard as it can: a ring of light orbits it
+    const a = now / 300
+    for (let k = 0; k < 3; k++) {
+      const t = a + k * 2.09, x = Math.round(Math.cos(t) * 8), y = Math.round(-9 + Math.sin(t) * 2.5)
+      if ((Math.sin(t) > 0)) { c.fillStyle = css(b.aura, 1.2, 0.9); c.fillRect(x, y, 2, 2) }
+    }
   }
 }
 

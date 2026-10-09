@@ -7,13 +7,14 @@
 // takes the next spot along a road instead of reshuffling the rest.
 
 import type { City, RunStatus, Status } from '../api'
+import { brainLook, type BrainLook } from './brain'
 import { agentBuilding, houseSize, houseSpec, toolBuilding, type BuildingStyle, type HouseSpec } from './kinds'
 
 export type RGB = [number, number, number]
 export type Pt = [number, number]
 export type ThingKind = 'agent' | 'shared' | 'library' | 'station' | 'files'
 export type Rect = { x: number; y: number; w: number; h: number }
-export type Npc = { seed: number; color: RGB; role: BuildingStyle; status: RunStatus | null }
+export type Npc = { seed: number; color: RGB; role: BuildingStyle; status: RunStatus | null; brain?: BrainLook }
 export type Thing = Rect & {                // x, y, w, h: the sprite's area in tiles; it stands on y + h
   key: string; kind: ThingKind; id: number
   style: BuildingStyle; color: RGB; spec?: HouseSpec
@@ -184,7 +185,7 @@ export function layout(city: City): Layout {
     const spec = houseSpec({ lines: a.lines, files: a.files.length, tools: toolsOf(a.id), shared: !!a.share_id }, style, color)
     const s = houseSize(spec)
     return { key: `agent:${a.id}`, kind: 'agent' as const, id: a.id, style, color, spec, w: s.w / T, h: s.h / T, label: a.name,
-      sub: a.share_id ? 'shared' : undefined, npc: { seed: seedOf(a.slug), color, role: style, status: a.run_status ?? null } }
+      sub: a.share_id ? 'shared' : undefined, npc: { seed: seedOf(a.slug), color, role: style, status: a.run_status ?? null, brain: brainLook(a.brain) } }
   })
   const files = city.me ? city.shared_files ?? [] : []
   if (files.length) agents.push({ key: 'files', kind: 'files', id: 0, style: 'vault', color: [92, 112, 140], w: 4, h: 4,

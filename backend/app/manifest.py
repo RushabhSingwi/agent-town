@@ -20,6 +20,18 @@ DEFAULT_MODEL = {"anthropic": "claude-sonnet-5-5", "openai": ""}  # "": the prov
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
+def credential_for(db: Session, a: Agent) -> ModelCredential | None:
+    """The agent's own credential, else its owner's default."""
+    return db.get(ModelCredential, a.model_credential_id) if a.model_credential_id else db.scalar(
+        select(ModelCredential).where(ModelCredential.owner_id == a.owner_id, ModelCredential.is_default.is_(True)))
+
+
+def brain(db: Session, a: Agent) -> dict | None:
+    """What it thinks with, for drawing its character: no secrets, just the provider and the names."""
+    cred = credential_for(db, a)
+    return {"provider": cred.provider, "model": a.model or DEFAULT_MODEL[cred.provider], "thinking": a.thinking} if cred else None
+
+
 def granted_tools(a: Agent) -> list[dict]:
     tools = []
     for g in a.grants:
@@ -60,8 +72,7 @@ def build_manifest(db: Session, a: Agent) -> dict:
                 continue
             public.append(item)
 
-    cred = db.get(ModelCredential, a.model_credential_id) if a.model_credential_id else db.scalar(
-        select(ModelCredential).where(ModelCredential.owner_id == a.owner_id, ModelCredential.is_default.is_(True)))
+    cred = credential_for(db, a)
     model = None
     if cred:
         model = {"credential_id": cred.id, "provider": cred.provider, "kind": cred.kind,
