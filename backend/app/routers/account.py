@@ -2,17 +2,18 @@
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .. import model_check, views
-from ..auth import require_session
+from .. import google, model_check, views
+from ..auth import COOKIE, require_session
 from ..config import settings
 from ..db import get_db
-from ..models import ApiToken, ModelCredential, User
+from ..models import ApiToken, ModelCredential, OAuthAccount, Run, User
 from ..schemas import CredentialIn, CredentialPatch, TokenIn
-from ..security import decrypt, encrypt, new_api_token
+from ..security import decrypt, encrypt, new_api_token, verify_password
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -129,4 +130,28 @@ def delete_credential(cred_id: int, user: User = Depends(require_session), db: S
         if nxt:
             nxt.is_default = True
             db.commit()
+    return {"ok": True}
+
+
+# ---- deleting your account ----------------------------------------------------------------
+
+class DeleteAccountIn(BaseModel):
+    password: str
+
+
+@router.delete("")
+def delete_account(body: DeleteAccountIn, response: Response, user: User = Depends(require_session),
+                   db: Session = Depends(get_db)):
+    """Delete the account and everything in it: agents, files, chats, keys, connections, shares.
+    Browser session only, and the password again, so a stolen cookie or API token can't do it."""
+    if not verify_password(user.password_hash, body.password):
+        raise HTTPException(403, "That password isn't right")
+    from .runs import _end                              # stop any sandbox still running first
+    for r in db.scalars(select(Run).where(Run.owner_id == user.id, Run.ended_at.is_(None))):
+        _end(db, r, "stopped", "The account was deleted")
+    for acct in db.scalars(select(OAuthAccount).where(OAuthAccount.owner_id == user.id)):
+        google.revoke(acct)                             # tell Google too, not just forget the token
+    db.delete(user)                                     # every table cascades from the user
+    db.commit()
+    response.delete_cookie(COOKIE, path="/")
     return {"ok": True}

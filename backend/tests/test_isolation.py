@@ -162,3 +162,26 @@ def test_default_moves_when_deleted(monkeypatch, make_user):
     alice.delete(f"/api/account/credentials/{two['id']}")
     creds = alice.get("/api/account/credentials").json()["credentials"]
     assert [(c["id"], c["is_default"]) for c in creds] == [(one["id"], True)]
+
+
+def test_delete_account_removes_everything(make_user, client):
+    alice, bob = make_user("alice"), make_user("bob")
+    a = alice.post("/api/agents", json={"markdown": AGENT_MD}).json()
+    alice.put("/api/files", json={"path": "notes.md", "content": "x\n"})
+    alice.post("/api/public", json={"kind": "agent", "agent_id": a["id"]})
+    token = alice.post("/api/account/tokens", json={"name": "cli"}).json()["token"]
+    b = bob.post("/api/agents", json={"markdown": AGENT_MD}).json()
+
+    assert alice.request("DELETE", "/api/account", json={"password": "wrong password"}).status_code == 403
+    api = TestClient(app, headers={"Authorization": f"Bearer {token}"})       # an API token can't do it
+    assert api.request("DELETE", "/api/account", json={"password": "correct horse battery"}).status_code == 403
+
+    assert alice.request("DELETE", "/api/account", json={"password": "correct horse battery"}).json() == {"ok": True}
+    assert alice.get("/api/auth/me").json() is None                           # signed out
+    assert api.get("/api/agents").status_code == 401                          # its tokens are gone too
+    assert client.post("/api/auth/login", json={"login": "alice", "password": "correct horse battery"}).status_code == 401
+    assert client.get("/api/city").json()["public"] == []                     # its public shares are gone
+    assert bob.get(f"/api/agents/{b['id']}").status_code == 200               # nobody else's things are touched
+    # the name is free again
+    assert client.post("/api/auth/signup", json={"email": "alice@example.com", "username": "alice",
+                                                 "password": "correct horse battery"}).status_code == 200

@@ -38,7 +38,9 @@ class AgentPatch(BaseModel):
     color: str | None = Color
     can_use_public: bool | None = None
     model_credential_id: int | None = Field(default=None, description="0 = use your default")
-    model: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=100, pattern=r"^[A-Za-z0-9._:/@-]*$")
+    thinking: Literal["", "low", "medium", "high", "xhigh", "max"] | None = None
+    building: Literal["", "studio", "office", "forge", "library", "lab", "observatory", "tavern", "cottage", "tower"] | None = None
 
 
 class GrantIn(BaseModel):
@@ -48,6 +50,10 @@ class GrantIn(BaseModel):
 
 class GrantsIn(BaseModel):
     grants: list[GrantIn] = Field(max_length=500)
+
+
+class TeamIn(BaseModel):
+    member_ids: list[int] = Field(max_length=50)
 
 
 class McpIn(BaseModel):

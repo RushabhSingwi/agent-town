@@ -7,13 +7,16 @@ export type FileFull = FileStat & { content: string; share_id?: number | null; a
 
 export type AgentSummary = {
   id: number; slug: string; name: string; description: string; color: string; owner: string
-  files: FileStat[]; lines: number
+  building: string; files: FileStat[]; lines: number
 }
 export type Grant = { connection_id: number; tool_name: string | null }
 export type MyAgent = Omit<AgentSummary, 'files'> & {
   files: FileFull[]; grants: Grant[]; share_id: number | null; can_use_public: boolean
-  model_credential_id: number | null; model: string
+  model_credential_id: number | null; model: string; thinking: Thinking; run_status?: RunStatus | null; team: number[]
 }
+
+export type Thinking = '' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type RunStatus = 'starting' | 'ready' | 'busy' | 'stopped' | 'error'
 
 export type ApiToken = { id: number; name: string; prefix: string; created_at: string; last_used_at: string | null; expires_at: string | null }
 export type Provider = 'anthropic' | 'openai'
@@ -25,7 +28,8 @@ export type Credential = {
 
 export type Status = 'unknown' | 'connected' | 'auth_required' | 'error' | 'needs_sandbox'
 export type Connection = {
-  id: number; name: string; transport: 'http' | 'stdio'; url: string | null; command: string | null
+  id: number; name: string; transport: 'http' | 'stdio' | 'hosted'; url: string | null; command: string | null
+  app: string; oauth_account_id: number | null
   has_auth: boolean; status: Status; status_detail: string; server_name: string; server_version: string
   last_checked_at: string | null; tools: { name: string; description: string }[]
   granted_to: { agent_id: number; agent: string; tool_name: string | null }[]
@@ -38,7 +42,6 @@ export type Share = {
   file?: FileFull | (FileStat & { agent: string })
 }
 
-export type RunStatus = 'starting' | 'ready' | 'busy' | 'stopped' | 'error'
 export type Run = {
   id: number; agent_id: number; status: RunStatus; detail: string; provider: string
   created_at: string; last_active_at: string; ended_at: string | null
@@ -49,7 +52,30 @@ export type RunEvent = {
   data: Record<string, unknown>
 }
 
-export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[] }
+export type SharedFile = FileStat & { content?: string }
+
+export type ImportFile = { path: string; content: string }
+export type ImportPlan = {
+  agents: {
+    source: string; name: string; description: string; exists: boolean; files: { source: string; path: string }[]
+    alternatives: { source: string; kind: 'agent' | 'command'; lines: number }[]; team: string[]
+  }[]
+  shared: { source: string; path: string }[]
+  skipped: { path: string; reason: string }[]
+  needs_main: boolean; candidates: string[]
+}
+
+export type MarketAgent = {
+  slug: string; name: string; description: string; tags: string[]; author: string; color: string; building: string
+  tools: string[]; team: string[]; ask: string[]; files: number; lines: number; installed: boolean
+}
+
+export type GoogleStatus = {
+  configured: boolean; app_url: string
+  accounts: { id: number; email: string; status: 'connected' | 'expired'; apps: ('gmail' | 'calendar')[] }[]
+}
+
+export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[]; shared_files: SharedFile[] }
 
 export class ApiError extends Error {
   status: number
@@ -82,12 +108,13 @@ export const api = {
 
   createAgent: (markdown: string, name: string | null, files: { path: string; content: string }[]) =>
     call<MyAgent>('POST', '/api/agents', { markdown, name: name || null, files }),
-  updateAgent: (id: number, patch: Partial<Pick<MyAgent, 'name' | 'description' | 'color' | 'can_use_public' | 'model' | 'model_credential_id'>>) =>
+  updateAgent: (id: number, patch: Partial<Pick<MyAgent, 'name' | 'description' | 'color' | 'can_use_public' | 'model' | 'thinking' | 'model_credential_id' | 'building'>>) =>
     call<MyAgent>('PATCH', `/api/agents/${id}`, patch),
   deleteAgent: (id: number) => call('DELETE', `/api/agents/${id}`),
   putFile: (id: number, path: string, content: string) => call<MyAgent>('PUT', `/api/agents/${id}/files`, { path, content }),
   deleteFile: (id: number, fileId: number) => call<MyAgent>('DELETE', `/api/agents/${id}/files/${fileId}`),
   setGrants: (id: number, grants: Grant[]) => call<MyAgent>('PUT', `/api/agents/${id}/grants`, { grants }),
+  setTeam: (id: number, member_ids: number[]) => call<MyAgent>('PUT', `/api/agents/${id}/team`, { member_ids }),
   manifest: (id: number) => call<unknown>('GET', `/api/agents/${id}/manifest`),
 
   addConnection: (body: { name: string; transport: 'http' | 'stdio'; url?: string; command?: string; auth_header?: string }) =>
@@ -104,11 +131,28 @@ export const api = {
   unshare: (id: number) => call('DELETE', `/api/public/${id}`),
   getShare: (id: number) => call<Share>('GET', `/api/public/${id}`),
 
+  sharedFile: (id: number) => call<SharedFile & { content: string }>('GET', `/api/files/${id}`),
+  putSharedFile: (path: string, content: string) => call<SharedFile>('PUT', '/api/files', { path, content }),
+  deleteSharedFile: (id: number) => call('DELETE', `/api/files/${id}`),
+  previewImport: (files: ImportFile[], main?: string, choices?: Record<string, string>) =>
+    call<ImportPlan>('POST', '/api/import/preview', { files, main, choices }),
+  doImport: (body: { files: ImportFile[]; agents: { source: string; name: string; files: string[]; team: string[] }[]; shared: string[] }) =>
+    call<{ created: MyAgent[]; updated: MyAgent[]; shared: number }>('POST', '/api/import', body),
+
+  awake: () => call<{ agent_id: number; run_id: number; status: RunStatus }[]>('GET', '/api/runs/active'),
+  activeRun: (agentId: number) => call<Run | null>('GET', `/api/agents/${agentId}/runs/active`),
+  market: () => call<MarketAgent[]>('GET', '/api/marketplace'),
+  installMarket: (slug: string) => call<{ agent: MyAgent; added: string[] }>('POST', `/api/marketplace/${slug}/install`),
+
+  googleStatus: () => call<GoogleStatus>('GET', '/api/connect/google'),
+  disconnectGoogle: (id: number) => call('DELETE', `/api/connect/google/${id}`),
+
   startRun: (agentId: number) => call<Run>('POST', `/api/agents/${agentId}/runs`),
   runEvents: (id: number, after: number) => call<{ run: Run; events: RunEvent[] }>('GET', `/api/runs/${id}/events?after=${after}`),
   sendMessage: (id: number, text: string) => call<RunEvent>('POST', `/api/runs/${id}/messages`, { text }),
   stopRun: (id: number) => call<Run>('DELETE', `/api/runs/${id}`),
 
+  deleteAccount: (password: string) => call('DELETE', '/api/account', { password }),
   tokens: () => call<ApiToken[]>('GET', '/api/account/tokens'),
   createToken: (name: string, expires_days: number | null) =>
     call<ApiToken & { token: string }>('POST', '/api/account/tokens', { name, expires_days }),

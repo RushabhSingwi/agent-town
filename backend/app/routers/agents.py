@@ -1,7 +1,7 @@
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import views
@@ -9,7 +9,7 @@ from ..auth import current_user, require_user
 from ..db import get_db
 from ..manifest import build_manifest
 from ..models import DEFINITION, Agent, AgentFile, AgentToolGrant, McpConnection, ModelCredential, PublicShare, User
-from ..schemas import AgentIn, AgentPatch, FileIn, GrantsIn
+from ..schemas import AgentIn, AgentPatch, FileIn, GrantsIn, TeamIn
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -35,7 +35,7 @@ def owner_view(db: Session, a: Agent) -> dict:
     return views.agent_owner_view(a, share, file_shares)
 
 
-def _set_file(a: Agent, path: str, content: str) -> AgentFile:
+def set_file(a: Agent, path: str, content: str) -> AgentFile:
     f = next((x for x in a.files if x.path == path), None)
     if f is None:
         f = AgentFile(path=path)
@@ -54,25 +54,32 @@ def my_agents(user: User = Depends(require_user), db: Session = Depends(get_db))
     return [owner_view(db, a) for a in agents]
 
 
-@router.post("")
-def create_agent(body: AgentIn, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    meta, _ = views.frontmatter(body.markdown)
-    name = (body.name or meta.get("name") or "").strip()
+def new_agent(db: Session, user: User, markdown: str, name: str | None = None, color: str | None = None) -> Agent:
+    """A new agent from its AGENT.md (not committed yet)."""
+    meta, _ = views.frontmatter(markdown)
+    name = (name or meta.get("name") or "").strip()
     if not name:
         raise HTTPException(422, "Give the agent a name (or a `name:` line in its frontmatter)")
     slug, n = _slugify(name), 2
     while db.scalar(select(Agent).where(Agent.owner_id == user.id, Agent.slug == slug)):
         slug, n = f"{_slugify(name)[:27]}-{n}", n + 1
-    color = body.color or meta.get("color", "")
+    color = color or meta.get("color", "")
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
-        color = PALETTE[len(user.agents) % len(PALETTE)]
+        count = db.scalar(select(func.count()).select_from(Agent).where(Agent.owner_id == user.id))
+        color = PALETTE[count % len(PALETTE)]
     a = Agent(owner_id=user.id, name=name[:80], slug=slug, description=meta.get("description", "")[:2000],
               color=color)
     db.add(a)
-    _set_file(a, DEFINITION, body.markdown)
+    set_file(a, DEFINITION, markdown)
+    return a
+
+
+@router.post("")
+def create_agent(body: AgentIn, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    a = new_agent(db, user, body.markdown, body.name, body.color)
     for f in body.files:
         if f.path != DEFINITION:
-            _set_file(a, f.path, f.content)
+            set_file(a, f.path, f.content)
     db.commit()
     return owner_view(db, a)
 
@@ -101,8 +108,12 @@ def update_agent(agent_id: int, body: AgentPatch, user: User = Depends(require_u
             if c is None or c.owner_id != user.id:
                 raise HTTPException(404, "No such credential")
             a.model_credential_id = c.id
+    brain = (a.model_credential_id, a.model, a.thinking)
     for field, value in changes.items():
         setattr(a, field, value)
+    if (a.model_credential_id, a.model, a.thinking) != brain:
+        from .runs import end_open_runs
+        end_open_runs(db, a, "It thinks differently now: your next message starts a fresh chat.")
     db.commit()
     return owner_view(db, a)
 
@@ -119,7 +130,7 @@ def put_file(agent_id: int, body: FileIn, user: User = Depends(require_user), db
     if ".." in body.path.split("/"):
         raise HTTPException(422, "No .. in paths")
     a = own_agent(db, user, agent_id)
-    _set_file(a, body.path, body.content)
+    set_file(a, body.path, body.content)
     db.commit()
     return owner_view(db, a)
 
@@ -152,6 +163,27 @@ def set_grants(agent_id: int, body: GrantsIn, user: User = Depends(require_user)
     a.grants = [x for x in a.grants if (x.connection_id, x.tool_name) in wanted]
     have = {(x.connection_id, x.tool_name) for x in a.grants}
     a.grants += [AgentToolGrant(connection_id=c, tool_name=t) for c, t in sorted(wanted - have, key=str)]
+    if wanted != have:
+        from .runs import end_open_runs
+        end_open_runs(db, a, "Its apps changed: your next message starts a fresh chat with them.")
+    db.commit()
+    return owner_view(db, a)
+
+
+@router.put("/{agent_id}/team")
+def set_team(agent_id: int, body: TeamIn, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Which of your other agents this one may call. Only your own, and never itself."""
+    a = own_agent(db, user, agent_id)
+    members = []
+    for mid in dict.fromkeys(body.member_ids):
+        if mid == a.id:
+            raise HTTPException(422, "An agent can't be on its own team")
+        members.append(own_agent(db, user, mid))
+    changed = {m.id for m in a.team} != {m.id for m in members}
+    a.team = members
+    if changed:
+        from .runs import end_open_runs
+        end_open_runs(db, a, "Its team changed: your next message starts a fresh chat with them.")
     db.commit()
     return owner_view(db, a)
 

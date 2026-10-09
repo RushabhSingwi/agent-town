@@ -34,21 +34,22 @@ def file_full(f: AgentFile) -> dict:
 def agent_summary(a: Agent) -> dict:
     """Enough to draw the building: floors are files, floor height comes from lines."""
     return {"id": a.id, "slug": a.slug, "name": a.name, "description": a.description, "color": a.color,
-            "owner": a.owner.username, "files": [file_stats(f) for f in a.files],
+            "owner": a.owner.username, "building": a.building, "files": [file_stats(f) for f in a.files],
             "lines": sum(f.lines for f in a.files)}
 
 
 def agent_owner_view(a: Agent, share: PublicShare | None, file_shares: dict[int, int]) -> dict:
     return {**agent_summary(a), "can_use_public": a.can_use_public,
-            "model_credential_id": a.model_credential_id, "model": a.model,
+            "model_credential_id": a.model_credential_id, "model": a.model, "thinking": a.thinking,
             "files": [{**file_full(f), "share_id": file_shares.get(f.id)} for f in a.files],
             "grants": [{"connection_id": g.connection_id, "tool_name": g.tool_name} for g in a.grants],
+            "team": [m.id for m in a.team],
             "share_id": share.id if share else None}
 
 
 def connection(c: McpConnection, granted_to: list[dict] | None = None) -> dict:
     return {"id": c.id, "name": c.name, "transport": c.transport, "url": c.url, "command": c.command,
-            "has_auth": bool(c.auth_header_enc), "status": c.status, "status_detail": c.status_detail,
+            "has_auth": bool(c.auth_header_enc), "app": c.app, "oauth_account_id": c.oauth_account_id, "status": c.status, "status_detail": c.status_detail,
             "server_name": c.server_name, "server_version": c.server_version,
             "last_checked_at": c.last_checked_at.isoformat() if c.last_checked_at else None,
             "tools": [{"name": t.name, "description": t.description} for t in c.tools],

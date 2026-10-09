@@ -3,13 +3,52 @@
 A town of AI agents. Sign up, add your agents (markdown files, like Claude Code's
 `.claude/agents/*.md`), connect your MCP servers, and choose what to share with everyone.
 
-- **Your district (private).** Each agent is a building: one floor per file, the biggest at
-  the bottom. A floor's height comes from its line count, and the footprint grows with the
-  number of files. Only you can see it.
-- **Utilities (MCP).** Each MCP connection is a station with a status lamp: connected,
-  needs credentials, error, or runs in sandbox. Agent Town does a real MCP handshake and
-  lists the server's tools. Wires run from a station to every agent allowed to use it,
-  per tool or for all of a connection's tools.
+- **Make it your own.** Right after you add an agent (and any time from its panel): answer a few
+  questions it asks about you (saved as `about-me.md`, which it reads first), tick the apps it may
+  use, and check which AI account it thinks with. Map style and other extras live in the ⋯ menu.
+- **Agent market.** Ready-made agents in [`agents/`](agents/) (a code reviewer, inbox triage,
+  meeting notes, a chief of staff with a team, and more), one click away under **+ Add agents**.
+  Anyone can add theirs: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-an-agent-to-the-market).
+- **Adding agents.** **+ Add agents** takes a single `.md`, a few files, or a whole folder (a
+  `.claude` folder, an agents repo). Agent Town finds the agent definitions (frontmatter with
+  `name:`; not skills, commands or memory notes), gives each agent the files its instructions link
+  to, and puts files several agents use (or none links to) into **Shared files**. When a slash
+  command shares an agent's name (`commands/lead.md` next to `agents/lead.md`), you pick which is
+  the agent; the command wins by default when the agent file is only a guard. An agent whose
+  instructions hand work off ("launch…", "delegate…") to other imported agents gets them as its team. You see the
+  plan in plain words and confirm. Importing the same folder again updates agents by name.
+- **Teams.** An agent can hand work to your other agents, like Claude Code sub-agents (About →
+  Team). In its sandbox each teammate becomes a sub-agent in `.claude/agents/`, with only its own
+  instructions, files (under `team/<name>/`) and tools, and the lead gets the `Task` tool. Claude
+  models only for now; one level deep. On the map, selecting a lead shows trails to its team.
+- **Shared files (private).** Knowledge all your agents can read, stored once: "about us", a style
+  guide. In a run they sit next to the agent's own files, at the same paths.
+- **The map.** A 2D game town on an island, in your choice of three looks (Retro, Blocks,
+  Fantasy), all drawn in code with no image files. Winding roads branch out of a square with a
+  fountain and market stalls; your agents' houses line them, a farm road leads west to your tools,
+  and people's shared agents sit to the south. Ponds, woods and lamp posts fill the rest. It's
+  seeded by your username, so it looks the same every visit, and grows as you add agents.
+  You're a character in it: walk with W A S D or the arrows (Shift runs), or click the ground, and
+  press E next to an agent to talk to it. Everyone's name floats over their head. Only you can see
+  your town.
+- **A living town.** Apps send couriers along the roads to the agents that use them: riders for
+  Gmail and Calendar, carts for GitHub, Notion and databases, boats round the island for Slack and
+  other outside apps. When an agent uses an app mid-chat, its courier sets off at once. A lantern by
+  each door shows who's awake, sleeping houses puff "z z", and a working agent waits at its door.
+- **Talking and visiting.** Talking to an agent opens an RPG-style dialogue box (portrait, typed-out
+  replies). Its files and settings live inside its house: instructions on the desk, books on the
+  shelf, what it knows about you on the noticeboard, apps in the stable, its team on the portrait
+  wall, settings in the chest.
+- **Agents' buildings.** Each agent is an NPC with its own building in a style that fits what it
+  does (studio, forge, library, observatory, tower…, or your choice). Its size comes from its
+  importance (lines it knows, plus its files and tools), its stories from its files, an annex
+  shows an emblem per tool it may use, and a banner flies when it's shared publicly. NPCs wander
+  their yards, walk to the door and work while a chat is busy, and show a bubble when something's wrong.
+- **Your tools (MCP).** Each MCP connection is a building on the farm: mail is a
+  horse stable, calendar a clock tower, GitHub a workshop, Notion an archive, Slack a signal tower,
+  a database a well, anything else a barn, each with a status lamp. Select one (or an agent) to
+  see trails to whoever may use it, per tool or for all of a connection's tools. Agent Town does a real MCP
+  handshake and lists the server's tools.
 - **Public district.** Share a whole agent or a single file (files go to the **Library**), with a
   note on what it's for. Everyone can browse it. Other people's agents can read it if the share
   allows agent use *and* their owner lets that agent read the public district.
@@ -19,6 +58,11 @@ A town of AI agents. Sign up, add your agents (markdown files, like Claude Code'
   call; a subscription is marked valid after its first successful run. A user's credential
   only ever runs that user's own agents. Using a subscription this way is between the user and
   their provider, and the UI says so. `AGENTTOWN_ALLOW_SUBSCRIPTION_TOKENS=false` turns them off.
+- **Each agent has its own brain.** Per agent, pick the account, the model (Haiku 5.5, Sonnet 5.5,
+  Opus 5.5 or Fable 5.1 on Claude; any model name on Codex) and how hard it thinks: Auto, Quick,
+  Balanced, Careful, Deep or Deepest. That becomes Claude Code's `--effort low…max`, or Codex's
+  `model_reasoning_effort` (capped at `xhigh`). It's in "Make it your own" → Its brain, and in the
+  chest in its house. A change ends its open chat, so the next message uses the new brain.
 - **Chat with an agent.** **Chat** on an agent starts a sandbox for it, with its files, its
   granted tools and its owner's credential, and runs Claude Code (Anthropic) or Codex (OpenAI)
   inside. See [Runs](#runs-an-agent-in-its-own-sandbox).
@@ -54,6 +98,31 @@ model credentials (never returned, owner-only), sharing, grants, the manifest, t
 handshake (JSON and SSE replies), credential prompts, the SSRF guard, and runs (run tokens,
 privacy, reuse, provider failures, reaping a dead sandbox).
 
+## Connecting Gmail and Google Calendar
+
+Agent Town signs people in with Google (OAuth 2.0 with PKCE), keeps their tokens encrypted on the
+server, and serves the Gmail and Calendar tools itself (`/api/runtime/mcp/{id}`), so the Google token
+never enters a sandbox. Agents can search and read mail and write **drafts** (never send), and list and
+add calendar events (without inviting anyone). Code: `app/google.py`, `routers/connect.py`,
+`routers/hosted.py`.
+
+Each server needs its own Google OAuth client:
+
+1. In [Google Cloud](https://console.cloud.google.com), create a project and enable the **Gmail API**
+   and the **Google Calendar API**.
+2. **Google Auth Platform:** set up the app (External), add the scopes `gmail.readonly`,
+   `gmail.compose`, `calendar.events`, and add yourself under **Audience → Test users**.
+3. **Clients → Create client → Web application**, with the redirect URI
+   `<AGENTTOWN_APP_URL>/api/connect/google/callback`. Locally that's
+   `http://127.0.0.1:8000/api/connect/google/callback`, and you open the app at http://127.0.0.1:8000.
+4. Download the client's JSON and import it without printing the secret:
+   `cd backend && uv run python scripts/import_google_client.py ~/Downloads/client_secret_….json`.
+   On Render, set `AGENTTOWN_GOOGLE_CLIENT_ID` and `AGENTTOWN_GOOGLE_CLIENT_SECRET` instead.
+
+In Google's **Testing** mode only your test users can connect, they see an "unverified app" warning,
+and sign-ins expire after 7 days. For the public, Google must verify the app, and Gmail's scopes also
+need a yearly security assessment.
+
 ## Deploy (Render + Modal)
 
 Production is one process: the `Dockerfile` builds the frontend, and the API serves
@@ -68,6 +137,8 @@ Production is one process: the `Dockerfile` builds the frontend, and the API ser
 3. Paste `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` when Render asks for them. No secrets live in
    this repo: they're generated by Render or entered in its dashboard.
 4. The first chat builds the sandbox image on Modal (a few minutes); later ones reuse it.
+5. Optional: add `AGENTTOWN_GOOGLE_CLIENT_ID` and `AGENTTOWN_GOOGLE_CLIENT_SECRET` (see Connecting Gmail
+   above) and register `https://<your-app>.onrender.com/api/connect/google/callback` on the client.
 
 Sandboxes call back to the API at `RENDER_EXTERNAL_URL` (the `onrender.com` address). With a
 custom domain, set `AGENTTOWN_PUBLIC_URL` to it. Check the Blueprint with `render blueprints validate`.
@@ -77,8 +148,10 @@ custom domain, set `AGENTTOWN_PUBLIC_URL` to it. Check the Blueprint with `rende
 ```
 frontend/src
   api.ts             typed fetch calls; the cookie goes along automatically (same origin)
-  city/layout.ts     city data -> where every building, station and wire goes (pure function)
-  city/render.ts     draws the layout isometrically on a canvas, and says what's under the pointer
+  city/layout.ts     city data -> the island: roads, houses, paths, ponds, woods (pure, seeded)
+  city/kinds.ts      which building an agent or a tool gets
+  city/themes.ts     the three looks' palettes; city/sprites.ts draws buildings, trees and NPCs
+  city/render.ts     the game loop: cached ground and buildings, walking NPCs, picking, pan and zoom
   App.tsx, cards.tsx, modals.tsx   the React UI around the canvas
 
 backend/app
@@ -89,11 +162,15 @@ backend/app
   routers/account.py API tokens and model credentials
   mcp_client.py      MCP over Streamable HTTP by hand: initialize -> initialized -> tools/list
   manifest.py        what an agent gets at runtime
+  importer.py        a dropped folder -> agents, their files, and shared files (pure functions)
   sandbox.py         where a run's box comes from: local subprocess (dev) or Modal
+  routers/files.py   shared files, import (preview, then import), and the agent market
+  marketplace.py     reads agents/ (the market) and checks contributions
   routers/runs.py    start/stop a run, chat messages, and the sandbox-facing /api/runtime
   routers/           auth, agents, mcp, public
   main.py            app, CSRF guard, /api/city, serves the built frontend
 backend/runner/runner.py   runs inside the sandbox (stdlib only): setup, then Claude Code or Codex per turn
+agents/              the agent market: one folder per agent (see CONTRIBUTING.md)
 backend/alembic      migrations (uv run alembic revision --autogenerate -m "...")
 backend/dev/demo_mcp_server.py   a hand-written MCP server, so you can see the server side too
 ```
@@ -180,3 +257,10 @@ servers), a warm pool for instant starts, streaming instead of polling, and the 
 Known gaps worth doing before real users: OAuth for remote MCP servers (most hosted ones want
 it, rather than a pasted header), email verification and password reset, rate limits on login,
 and Postgres in CI.
+
+## License and policies
+
+[MIT](LICENSE). Contributions welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+Writing agents for Agent Town (or an AI reading this repo)? See [AGENTS.md](AGENTS.md).
+What's next: [ROADMAP.md](ROADMAP.md).
+The hosted service's [privacy policy](PRIVACY.md).

@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     run_idle_minutes: int = 15
     run_max_hours: int = 4
 
+    # Where people open Agent Town in their browser. "Sign in with Google" sends them back here, so
+    # this host must match a redirect URI registered on the Google client. On Render: the service URL.
+    app_url: str = os.environ.get("RENDER_EXTERNAL_URL") or "http://127.0.0.1:8000"
+    # Your Google OAuth client (Google Cloud → Google Auth Platform → Clients). Empty: Gmail and
+    # Calendar show "not set up on this server". Import a client_secret.json with
+    # `uv run python scripts/import_google_client.py <file>`; never commit these.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     @field_validator("database_url")
     @classmethod
     def _psycopg(cls, v: str) -> str:

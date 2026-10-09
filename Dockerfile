@@ -15,6 +15,7 @@ WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 RUN uv sync --locked --no-dev --group modal --no-install-project
 COPY backend/ ./
+COPY agents/ /app/agents/
 COPY --from=web /app/frontend/dist /app/frontend/dist
 RUN useradd --create-home app
 USER app

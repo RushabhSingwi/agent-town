@@ -4,8 +4,11 @@ users ─┬─ sessions                 browser logins (only a hash of the cook
        ├─ api_tokens               "Authorization: Bearer at_…" for scripts and sandboxes (hashed too)
        ├─ model_credentials        the user's own API key / subscription token, encrypted
        ├─ agents ─┬─ agent_files    the agent's markdown: AGENT.md plus any knowledge files
+       │          ├─ agent_team     which of the owner's other agents it may call (its sub-agents)
        │          └─ agent_tool_grants ──┐  which tools this agent may use
        ├─ mcp_connections ─ mcp_tools ◄──┘  a user's MCP servers and the tools they expose
+       ├─ oauth_accounts            accounts signed in with OAuth (Google): their tokens, encrypted
+       ├─ shared_files              knowledge every one of the user's agents can read (private)
        ├─ public_shares             what a user put in the public district
        └─ runs ─ run_events         an agent running in its own sandbox, and what it said and did
 """
@@ -101,6 +104,10 @@ class Agent(Base):
     model_credential_id: Mapped[int | None] = mapped_column(
         ForeignKey("model_credentials.id", ondelete="SET NULL"))
     model: Mapped[str] = mapped_column(String(100), default="")
+    # How hard it thinks before answering: low … max ("" = the model's own default). See manifest.EFFORTS.
+    thinking: Mapped[str] = mapped_column(String(10), default="")
+    # What its building looks like on the map: studio, forge, library… ("" = picked from its description)
+    building: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
@@ -109,9 +116,21 @@ class Agent(Base):
         back_populates="agent", cascade="all, delete-orphan", order_by="AgentFile.path")
     grants: Mapped[list["AgentToolGrant"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan")
+    team: Mapped[list["Agent"]] = relationship(
+        secondary="agent_team", primaryjoin="Agent.id == AgentTeam.lead_id", secondaryjoin="Agent.id == AgentTeam.member_id",
+        order_by="Agent.name")
 
 
 DEFINITION = "AGENT.md"
+
+
+class AgentTeam(Base):
+    """A lead agent may call a member agent, like Claude Code's sub-agents: both are the same
+    owner's, and the member keeps only its own files and tools."""
+    __tablename__ = "agent_team"
+
+    lead_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
 
 
 class AgentFile(Base):
@@ -134,6 +153,45 @@ class AgentFile(Base):
         self.bytes = len(content.encode())
 
 
+class SharedFile(Base):
+    """A file all of its owner's agents can read: a playbook or "about us" that several agents
+    use, kept once instead of copied into each. Private, like the agents themselves.
+    In a run it's written at its own path, next to the agent's own files (which win on a clash)."""
+    __tablename__ = "shared_files"
+    __table_args__ = (UniqueConstraint("owner_id", "path"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    lines: Mapped[int] = mapped_column(Integer)
+    bytes: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+    set_content = AgentFile.set_content
+
+
+class OAuthAccount(Base):
+    """An account someone signed into with OAuth, like Composio's "connected account": which provider,
+    which of their accounts, which scopes they allowed, and the tokens (encrypted). Agent Town hosts
+    the tools for it itself, so the tokens never go into a sandbox.
+    status: connected | expired (refreshing failed: they need to sign in again)"""
+    __tablename__ = "oauth_accounts"
+    __table_args__ = (UniqueConstraint("owner_id", "provider", "subject"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))          # google
+    subject: Mapped[str] = mapped_column(String(255))          # the provider's id for the account
+    email: Mapped[str] = mapped_column(String(320), default="")
+    scopes: Mapped[str] = mapped_column(Text, default="")      # space-separated, as granted
+    refresh_token_enc: Mapped[str] = mapped_column(Text, default="")
+    access_token_enc: Mapped[str] = mapped_column(Text, default="")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="connected")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class McpConnection(Base):
     __tablename__ = "mcp_connections"
     __table_args__ = (UniqueConstraint("owner_id", "name"),)
@@ -141,10 +199,13 @@ class McpConnection(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(60))
-    transport: Mapped[str] = mapped_column(String(10))       # "http" | "stdio"
+    transport: Mapped[str] = mapped_column(String(10))       # "http" | "stdio" | "hosted"
     url: Mapped[str | None] = mapped_column(Text)            # http
     command: Mapped[str | None] = mapped_column(Text)        # stdio: runs in the sandbox, later
     auth_header_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted Authorization value
+    # transport "hosted": tools Agent Town serves itself (Gmail, Calendar) for this signed-in account
+    oauth_account_id: Mapped[int | None] = mapped_column(ForeignKey("oauth_accounts.id", ondelete="CASCADE"))
+    app: Mapped[str] = mapped_column(String(30), default="")  # hosted: gmail | calendar
     # unknown | connected | auth_required | error | needs_sandbox
     status: Mapped[str] = mapped_column(String(20), default="unknown")
     status_detail: Mapped[str] = mapped_column(Text, default="")
