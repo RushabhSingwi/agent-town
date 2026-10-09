@@ -34,7 +34,7 @@ def file_full(f: AgentFile) -> dict:
 def agent_summary(a: Agent) -> dict:
     """Enough to draw the building: floors are files, floor height comes from lines."""
     return {"id": a.id, "slug": a.slug, "name": a.name, "description": a.description, "color": a.color,
-            "owner": a.owner.username, "files": [file_stats(f) for f in a.files],
+            "owner": a.owner.username, "building": a.building, "files": [file_stats(f) for f in a.files],
             "lines": sum(f.lines for f in a.files)}
 
 

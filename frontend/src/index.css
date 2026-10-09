@@ -168,3 +168,10 @@ ul.can li.warn { background: #fde8d4; color: #8a4a12; }
   .bar h1 { font-size: 14px; white-space: nowrap; }
   .bar button { white-space: nowrap; padding: 4px 8px; font-size: 12px; }
 }
+
+/* the map */
+canvas.city { touch-action: none; image-rendering: pixelated; }
+select.style-pick { font: inherit; font-size: 13px; border: 1px solid #cfc3a8; border-radius: 8px; padding: 4px 6px; background: #fff; }
+.controls-hint { position: fixed; left: 12px; bottom: 12px; background: rgba(20,20,30,.72); color: #f4ead2; font-size: 12px;
+  padding: 6px 10px; border-radius: 8px; pointer-events: none; }
+@media (max-width: 900px) { .controls-hint { display: none; } }

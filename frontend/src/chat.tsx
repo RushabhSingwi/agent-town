@@ -2,14 +2,14 @@
 // and otherwise the agent's sandbox starts with your first message (and stops by itself when idle).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type MyAgent, type Run, type RunEvent } from './api'
+import { api, type MyAgent, type Run, type RunEvent, type RunStatus } from './api'
 import { Err, Md, msg } from './ui'
 
 const STATUS: Record<Run['status'], string> = {
   starting: 'Waking up…', ready: 'Ready', busy: 'Working…', stopped: 'Asleep', error: 'Something went wrong',
 }
 
-export function ChatPanel({ agent, hasModel }: { agent: MyAgent; hasModel: boolean }) {
+export function ChatPanel({ agent, hasModel, onStatus }: { agent: MyAgent; hasModel: boolean; onStatus?: (s: RunStatus | null) => void }) {
   const [run, setRun] = useState<Run | null>(null)
   const [events, setEvents] = useState<RunEvent[]>([])
   const [text, setText] = useState('')
@@ -43,6 +43,7 @@ export function ChatPanel({ agent, hasModel }: { agent: MyAgent; hasModel: boole
   }, [agent.id, poll])
 
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'end' }) }, [events.length, run?.status])
+  useEffect(() => { onStatus?.(run && !run.ended_at ? run.status : null) }, [run?.status, run?.ended_at]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function send(e: React.FormEvent) {
     e.preventDefault()

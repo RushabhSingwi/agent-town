@@ -2,15 +2,18 @@
 // On a phone the two sides become tabs.
 
 import { useEffect, useState } from 'react'
-import { api, type City, type Connection, type Credential, type FileFull, type Grant, type MyAgent } from './api'
+import { api, type City, type Connection, type Credential, type FileFull, type Grant, type MyAgent, type RunStatus } from './api'
 import { FileModal, ManifestModal, ModelPicker } from './cards'
 import { ChatPanel } from './chat'
+import { AGENT_BUILDINGS, agentBuilding } from './city/kinds'
 import { STATUS_LABEL } from './city/layout'
 import { Err, msg, readFiles } from './ui'
 
 type Reload = () => Promise<void>
 
-export function AgentView({ agent, city, floor, reload, onClose }: { agent: MyAgent; city: City; floor: string | null; reload: Reload; onClose: () => void }) {
+export function AgentView({ agent, city, floor, reload, onClose, onStatus }: {
+  agent: MyAgent; city: City; floor: string | null; reload: Reload; onClose: () => void; onStatus: (s: RunStatus | null) => void
+}) {
   const [tab, setTab] = useState<'chat' | 'about'>('chat')
   const [creds, setCreds] = useState<Credential[] | null>(null)
   useEffect(() => { api.credentials().then(d => setCreds(d.credentials), () => setCreds([])) }, [])
@@ -25,7 +28,7 @@ export function AgentView({ agent, city, floor, reload, onClose }: { agent: MyAg
         <About agent={agent} city={city} floor={floor} creds={creds} reload={reload} onClose={onClose} />
       </aside>
       <aside className="side side-right">
-        <ChatPanel key={agent.id} agent={agent} hasModel={creds === null || creds.length > 0} />
+        <ChatPanel key={agent.id} agent={agent} hasModel={creds === null || creds.length > 0} onStatus={onStatus} />
       </aside>
     </div>
   )
@@ -128,6 +131,14 @@ function About({ agent, city, floor, creds, reload, onClose }: { agent: MyAgent;
         </ul>}
 
       <ModelPicker agent={agent} run={run} />
+
+      <h3>Its building</h3>
+      <div className="row tight">
+        <select value={agent.building || ''} onChange={e => run(() => api.updateAgent(agent.id, { building: e.target.value }))}>
+          <option value="">Automatic ({AGENT_BUILDINGS[agentBuilding({ ...agent, building: '' })]})</option>
+          {Object.entries(AGENT_BUILDINGS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
 
       <h3>Settings</h3>
       <label className="check"><input type="checkbox" checked={agent.can_use_public}

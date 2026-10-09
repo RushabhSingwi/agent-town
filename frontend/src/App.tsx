@@ -4,6 +4,7 @@ import { AgentView } from './agent'
 import { LibraryCard, SharedAgentCard, SharedFilesCard, StationCard } from './cards'
 import { layout, type Thing } from './city/layout'
 import { CityView } from './city/render'
+import { THEMES, THEME_NAMES, type ThemeName } from './city/themes'
 import { AuthModal, NewAgentModal, NewToolModal } from './modals'
 import { AccountModal } from './account'
 import { AddModal } from './importer'
@@ -18,6 +19,10 @@ export default function App() {
   const [sel, setSel] = useState<Sel>(null)
   const [modal, setModal] = useState<'login' | 'signup' | 'add' | 'agent' | 'tool' | 'account' | null>(null)
   const [refit, setRefit] = useState(true)
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    try { const t = localStorage.getItem('agenttown.theme'); if (t && t in THEMES) return t as ThemeName } catch { /* private mode */ }
+    return 'retro'
+  })
 
   const reload = useCallback(async () => { setCity(await api.city()) }, [])
   useEffect(() => { reload() }, [reload])
@@ -27,6 +32,13 @@ export default function App() {
     viewRef.current = v
     return () => v.destroy()
   }, [])
+
+  useEffect(() => {
+    viewRef.current?.setTheme(theme)
+    try { localStorage.setItem('agenttown.theme', theme) } catch { /* private mode */ }
+  }, [theme])
+
+  useEffect(() => { viewRef.current?.setPlayerName(city?.me ? `@${city.me.username}` : 'you') }, [city?.me])
 
   const L = useMemo(() => (city ? layout(city) : null), [city])
   useEffect(() => {
@@ -88,6 +100,9 @@ export default function App() {
       <header className="bar">
         <h1>Agent Town</h1>
         <span className="grow" />
+        <select className="style-pick" value={theme} onChange={e => setTheme(e.target.value as ThemeName)} title="How the map looks">
+          {THEME_NAMES.map(n => <option key={n} value={n}>{THEMES[n].title}</option>)}
+        </select>
         <button onClick={() => viewRef.current?.fit()}>Fit</button>
         {me ? <>
           <button className="primary" onClick={() => setModal('add')}>+ Add agents</button>
@@ -110,8 +125,10 @@ export default function App() {
         (like a <code>.claude</code> folder). Then open an agent and press <b>Chat</b>.
       </div>}
 
+      {!thing && <div className="controls-hint"><b>W A S D</b> or arrows to walk · <b>Shift</b> to run · <b>E</b> to talk · click the ground to walk there</div>}
       {card && <div ref={cardRef} className="dock">{card}</div>}
-      {agent && city && <AgentView key={agent.id} agent={agent} city={city} floor={sel!.floor} reload={reload} onClose={() => setSel(null)} />}
+      {agent && city && <AgentView key={agent.id} agent={agent} city={city} floor={sel!.floor} reload={reload} onClose={() => setSel(null)}
+        onStatus={s => viewRef.current?.setAgentStatus(agent.id, s)} />}
 
       {(modal === 'login' || modal === 'signup') && <AuthModal mode={modal} onClose={() => setModal(null)}
         onDone={() => { setModal(null); setRefit(true); reload() }} />}

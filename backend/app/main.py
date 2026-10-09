@@ -14,7 +14,7 @@ from . import views
 from .auth import current_user
 from .config import DEV_SECRET, settings
 from .db import get_db
-from .models import Agent, McpConnection, PublicShare, SharedFile, User
+from .models import Agent, McpConnection, PublicShare, Run, SharedFile, User
 from .routers import account, agents, auth, files, mcp, public, runs
 from .routers.agents import owner_view
 from .routers.files import shared_view
@@ -59,7 +59,8 @@ def city(user: User | None = Depends(current_user), db: Session = Depends(get_db
         mine = db.scalars(select(Agent).where(Agent.owner_id == user.id).order_by(Agent.created_at)).all()
         conns = db.scalars(select(McpConnection).where(McpConnection.owner_id == user.id)
                            .order_by(McpConnection.created_at)).all()
-        out["agents"] = [owner_view(db, a) for a in mine]
+        live = dict(db.execute(select(Run.agent_id, Run.status).where(Run.owner_id == user.id, Run.ended_at.is_(None))).all())
+        out["agents"] = [{**owner_view(db, a), "run_status": live.get(a.id)} for a in mine]
         out["connections"] = [connection_view(db, c) for c in conns]
         out["shared_files"] = [shared_view(f) for f in db.scalars(
             select(SharedFile).where(SharedFile.owner_id == user.id).order_by(SharedFile.path))]

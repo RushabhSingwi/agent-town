@@ -39,6 +39,7 @@ class AgentPatch(BaseModel):
     can_use_public: bool | None = None
     model_credential_id: int | None = Field(default=None, description="0 = use your default")
     model: str | None = Field(default=None, max_length=100)
+    building: Literal["", "studio", "office", "forge", "library", "lab", "observatory", "tavern", "cottage", "tower"] | None = None
 
 
 class GrantIn(BaseModel):

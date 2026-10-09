@@ -10,13 +10,24 @@ A town of AI agents. Sign up, add your agents (markdown files, like Claude Code'
   plan in plain words and confirm. Importing the same folder again updates agents by name.
 - **Shared files (private).** Knowledge all your agents can read, stored once: "about us", a style
   guide. In a run they sit next to the agent's own files, at the same paths.
-- **Your district (private).** Each agent is a building: one floor per file, the biggest at
-  the bottom. A floor's height comes from its line count, and the footprint grows with the
-  number of files. Only you can see it.
-- **Utilities (MCP).** Each MCP connection is a station with a status lamp: connected,
-  needs credentials, error, or runs in sandbox. Agent Town does a real MCP handshake and
-  lists the server's tools. Wires run from a station to every agent allowed to use it,
-  per tool or for all of a connection's tools.
+- **The map.** A 2D game town on an island, in your choice of three looks (Retro, Blocks,
+  Fantasy), all drawn in code with no image files. Winding roads branch out of a square with a
+  fountain and market stalls; your agents' houses line them, a farm road leads west to your tools,
+  and people's shared agents sit to the south. Ponds, woods and lamp posts fill the rest. It's
+  seeded by your username, so it looks the same every visit, and grows as you add agents.
+  You're a character in it: walk with W A S D or the arrows (Shift runs), or click the ground, and
+  press E next to an agent to talk to it. Everyone's name floats over their head. Only you can see
+  your town.
+- **Agents' buildings.** Each agent is an NPC with its own building in a style that fits what it
+  does (studio, forge, library, observatory, tower…, or your choice). Its size comes from its
+  importance (lines it knows, plus its files and tools), its stories from its files, an annex
+  shows an emblem per tool it may use, and a banner flies when it's shared publicly. NPCs wander
+  their yards, walk to the door and work while a chat is busy, and show a bubble when something's wrong.
+- **Your tools (MCP).** Each MCP connection is a building on the farm: mail is a
+  horse stable, calendar a clock tower, GitHub a workshop, Notion an archive, Slack a signal tower,
+  a database a well, anything else a barn, each with a status lamp. Select one (or an agent) to
+  see trails to whoever may use it, per tool or for all of a connection's tools. Agent Town does a real MCP
+  handshake and lists the server's tools.
 - **Public district.** Share a whole agent or a single file (files go to the **Library**), with a
   note on what it's for. Everyone can browse it. Other people's agents can read it if the share
   allows agent use *and* their owner lets that agent read the public district.
@@ -84,8 +95,10 @@ custom domain, set `AGENTTOWN_PUBLIC_URL` to it. Check the Blueprint with `rende
 ```
 frontend/src
   api.ts             typed fetch calls; the cookie goes along automatically (same origin)
-  city/layout.ts     city data -> where every building, station and wire goes (pure function)
-  city/render.ts     draws the layout isometrically on a canvas, and says what's under the pointer
+  city/layout.ts     city data -> the island: roads, houses, paths, ponds, woods (pure, seeded)
+  city/kinds.ts      which building an agent or a tool gets
+  city/themes.ts     the three looks' palettes; city/sprites.ts draws buildings, trees and NPCs
+  city/render.ts     the game loop: cached ground and buildings, walking NPCs, picking, pan and zoom
   App.tsx, cards.tsx, modals.tsx   the React UI around the canvas
 
 backend/app
