@@ -101,6 +101,35 @@ model credentials (never returned, owner-only), sharing, grants, the manifest, t
 handshake (JSON and SSE replies), credential prompts, the SSRF guard, and runs (run tokens,
 privacy, reuse, provider failures, reaping a dead sandbox).
 
+## Your own town on your computer (Docker)
+
+To keep a town running on your own machine, show it to friends, turn it off and pick up where you
+left off, use Docker. You need Docker Desktop and nothing else.
+
+```sh
+./town.sh up       # first time (and after pulling new code): builds and starts at http://127.0.0.1:8000
+./town.sh stop     # turn it off. Everything is kept
+./town.sh start    # turn it back on
+./town.sh backup   # save the database to backups/ (git-ignored)
+./town.sh status   # is it running, and the address for friends on your Wi-Fi
+```
+
+- **Your data** (people, agents, files, connected apps, chats) lives in Postgres, in the Docker volume
+  `agenttown-data`. Stopping, restarting, rebooting and `./town.sh up` after an update all keep it.
+  Only `./town.sh destroy` (which asks first) deletes it.
+- **`.env.local`** is made on the first `up` and is git-ignored. It holds a new secret key that
+  encrypts the AI accounts and app sign-ins people save. Back it up with your backups: a database
+  without its key can't decrypt those, and they'd have to be added again. If you set up Google
+  sign-in for development, its keys are copied in from `backend/.env`.
+- **Agents run inside the container** (it includes Claude Code and Codex), not on your Mac, and
+  each person's agents use their own AI account.
+- **Port:** 8000 by default, so stop the dev server first, or start with `AGENTTOWN_PORT=8080 ./town.sh up`.
+- **Friends** on the same Wi-Fi can open the address `./town.sh status` prints, and each makes an
+  account. To share outside your network, use a tunnel (for example `ngrok http 8000`) and set
+  `AGENTTOWN_APP_URL` in `.env.local` to the tunnel's address. For Google sign-in through it, add
+  that address's `/api/connect/google/callback` to your Google client, and add your friends as test
+  users while the app is in Testing mode.
+
 ## Connecting Gmail and Google Calendar
 
 Agent Town signs people in with Google (OAuth 2.0 with PKCE), keeps their tokens encrypted on the

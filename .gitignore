@@ -21,3 +21,6 @@ client_secret*.json
 client-secret*.json
 *.pem
 *.key
+
+# local town (./town.sh)
+backups/
