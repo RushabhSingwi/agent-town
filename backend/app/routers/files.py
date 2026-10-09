@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import importer
+from .. import importer, marketplace
 from ..auth import require_user
 from ..db import get_db
 from ..models import DEFINITION, Agent, SharedFile, User
@@ -76,12 +76,14 @@ class UploadFile(BaseModel):
 class PreviewIn(BaseModel):
     files: list[UploadFile] = Field(min_length=1, max_length=2000)
     main: str | None = Field(default=None, description="no agent definitions found: the file that is the agent")
+    choices: dict[str, str] | None = Field(default=None, description="agent name -> source, when it has a command too")
 
 
 class PlannedAgent(BaseModel):
     source: str
     name: str = Field(min_length=1, max_length=80)
     files: list[str] = Field(default_factory=list, max_length=500, description="sources of its own files")
+    team: list[str] = Field(default_factory=list, max_length=50, description="names of the other agents it may call")
 
 
 class ImportIn(BaseModel):
@@ -99,7 +101,7 @@ def _texts(files: list[UploadFile]) -> dict[str, str]:
 @router.post("/api/import/preview")
 def preview(body: PreviewIn, user: User = Depends(require_user), db: Session = Depends(get_db)):
     """What an import would create. Nothing is saved; the person checks it, then imports."""
-    p = importer.plan(_texts(body.files), body.main)
+    p = importer.plan(_texts(body.files), body.main, body.choices)
     mine = {a.name for a in db.scalars(select(Agent).where(Agent.owner_id == user.id))}
     for a in p["agents"]:
         a["exists"] = a["name"] in mine  # importing again updates it instead of making a copy
@@ -136,9 +138,16 @@ def do_import(body: ImportIn, user: User = Depends(require_user), db: Session = 
         else:
             set_file(a, DEFINITION, text[pa.source])
             updated.append(a)
+        a.description = importer.describe(text[pa.source])[:2000] or a.description
         for path, content in own:
             if path != DEFINITION:
                 set_file(a, path, content)
+    db.flush()
+    for pa in body.agents:                      # teams, once every agent exists
+        if pa.team:
+            a = db.scalar(select(Agent).where(Agent.owner_id == user.id, Agent.name == pa.name))
+            a.team = [m for m in db.scalars(select(Agent).where(Agent.owner_id == user.id, Agent.name.in_(pa.team)))
+                      if m.id != a.id]
     n_shared = 0
     for src in body.shared:
         path, content = need(src)
@@ -149,3 +158,52 @@ def do_import(body: ImportIn, user: User = Depends(require_user), db: Session = 
     return {"created": [owner_view(db, a) for a in created], "updated": [owner_view(db, a) for a in updated],
             "shared": n_shared}
 
+
+
+# ---- the agent market -----------------------------------------------------------------------
+
+def _summary(e: dict, installed: set[str]) -> dict:
+    return {k: e[k] for k in ("slug", "name", "description", "tags", "author", "color", "building", "tools", "team")} | {
+        "files": len(e["files"]), "lines": sum(f["content"].count("\n") + 1 for f in e["files"]),
+        "installed": e["name"] in installed}
+
+
+@router.get("/api/marketplace")
+def market(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Ready-made agents from agents/ in the repo, and which of them you already have."""
+    mine = set(db.scalars(select(Agent.name).where(Agent.owner_id == user.id)))
+    return [_summary(e, mine) for e in marketplace.catalog().values()]
+
+
+@router.post("/api/marketplace/{slug}/install")
+def install(slug: str, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Add a market agent to your town (updating it if you have one by that name), and its team."""
+    cat = marketplace.catalog()
+    if slug not in cat:
+        raise HTTPException(404, "No such market agent")
+    by_name = {e["name"]: e for e in cat.values()}
+
+    def put(e: dict) -> Agent:
+        a = db.scalar(select(Agent).where(Agent.owner_id == user.id, Agent.name == e["name"]))
+        md = next(f["content"] for f in e["files"] if f["path"] == "AGENT.md")
+        if a is None:
+            a = new_agent(db, user, md, e["name"], e["color"] or None)
+        else:
+            set_file(a, DEFINITION, md)
+        a.description = e["description"][:2000]
+        a.building = e["building"]
+        for f in e["files"]:
+            if f["path"] != DEFINITION:
+                set_file(a, f["path"], f["content"])
+        return a
+
+    entry = cat[slug]
+    lead = put(entry)
+    added = [lead]
+    if entry["team"]:                              # a lead comes with its team (one level, like runs)
+        members = [put(by_name[n]) for n in entry["team"] if n in by_name]
+        db.flush()
+        lead.team = [m for m in members if m.id != lead.id]
+        added += members
+    db.commit()
+    return {"agent": owner_view(db, lead), "added": [a.name for a in added]}

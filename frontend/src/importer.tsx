@@ -1,8 +1,8 @@
 // "+ Add": drop in a folder or some .md files; we work out which are agents and which are knowledge,
 // show it in plain words, and add it all in one click.
 
-import { useState } from 'react'
-import { api, type ImportFile, type ImportPlan } from './api'
+import { useEffect, useState } from 'react'
+import { api, type ImportFile, type ImportPlan, type MarketAgent } from './api'
 import { Err, Modal, msg } from './ui'
 
 const TEXT = /\.(md|markdown|txt)$/i
@@ -52,16 +52,17 @@ export function AddModal({ onClose, onDone, onWrite }: { onClose: () => void; on
   const [agentsOn, setAgentsOn] = useState<Set<string>>(new Set())
   const [sharedOn, setSharedOn] = useState<Set<string>>(new Set())
   const [main, setMain] = useState('')
+  const [choices, setChoices] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [drag, setDrag] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function analyse(p: Picked, mainFile?: string) {
+  async function analyse(p: Picked, mainFile?: string, picks: Record<string, string> = choices) {
     setError(null)
     if (!p.files.length) { setError('No .md or .txt files in there. Agents are written as markdown files.'); return }
     setBusy(true)
     try {
-      const pl = await api.previewImport(p.files, mainFile)
+      const pl = await api.previewImport(p.files, mainFile, picks)
       setPicked(p); setPlan(pl)
       setAgentsOn(new Set(pl.agents.map(a => a.source)))
       setSharedOn(new Set(pl.shared.map(s => s.source)))
@@ -75,7 +76,8 @@ export function AddModal({ onClose, onDone, onWrite }: { onClose: () => void; on
     try {
       const r = await api.doImport({
         files: picked.files,
-        agents: plan.agents.filter(a => agentsOn.has(a.source)).map(a => ({ source: a.source, name: a.name, files: a.files.map(f => f.source) })),
+        agents: plan.agents.filter(a => agentsOn.has(a.source)).map(a => ({ source: a.source, name: a.name, files: a.files.map(f => f.source),
+          team: a.team.filter(n => plan.agents.some(o => o.name === n && agentsOn.has(o.source))) })),
         shared: plan.shared.filter(s => sharedOn.has(s.source)).map(s => s.source),
       })
       onDone(r.created[0]?.id ?? r.updated[0]?.id ?? null)
@@ -106,6 +108,7 @@ export function AddModal({ onClose, onDone, onWrite }: { onClose: () => void; on
         <span className="hint">Only text files are read. Nothing is saved until you confirm.</span>
       </div>
       <Err error={error} />
+      <Market onDone={onDone} />
       <p className="switch">Starting from nothing? <a href="#" onClick={e => { e.preventDefault(); onWrite() }}>Write a new agent</a></p>
     </Modal>
   )
@@ -134,7 +137,12 @@ export function AddModal({ onClose, onDone, onWrite }: { onClose: () => void; on
           <li key={a.source}>
             <label className="grow"><input type="checkbox" checked={agentsOn.has(a.source)} onChange={() => toggle(agentsOn, setAgentsOn, a.source)} />
               <b>{a.name}</b>{a.exists && <span className="mini">updates yours</span>}
-              {a.description && <div className="meta wrap">{a.description}</div>}</label>
+              {a.description && <div className="meta wrap">{a.description}</div>}
+              {a.team.length > 0 && <div className="meta wrap">👥 team: {a.team.join(', ')}</div>}</label>
+            {a.alternatives.length > 1 && <select title="Which file holds its instructions" value={a.source} onClick={e => e.stopPropagation()}
+              onChange={e => { const next = { ...choices, [a.name]: e.target.value }; setChoices(next); analyse(picked!, undefined, next) }}>
+              {a.alternatives.map(x => <option key={x.source} value={x.source}>{x.kind === 'command' ? `/${a.name} command` : 'agent file'} · {x.lines} ln</option>)}
+            </select>}
             <span className="meta" title={a.files.map(f => f.path).join('\n')}>
               {a.files.length ? `+ ${a.files.length} file${a.files.length === 1 ? '' : 's'} it uses` : ''}</span>
           </li>))}
@@ -153,5 +161,34 @@ export function AddModal({ onClose, onDone, onWrite }: { onClose: () => void; on
         <button onClick={() => { setPlan(null); setPicked(null) }}>Start over</button>
       </div>
     </Modal>
+  )
+}
+
+// Ready-made agents from agents/ in the repo, added with one click.
+function Market({ onDone }: { onDone: (firstId: number | null) => void }) {
+  const [items, setItems] = useState<MarketAgent[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => { api.market().then(setItems, () => setItems([])) }, [])
+  if (!items?.length) return null
+  return (
+    <section className="market">
+      <h3>Or pick one from the agent market</h3>
+      <div className="market-grid">{items.map(m => (
+        <div key={m.slug} className="market-card">
+          <div className="market-top"><span className="sw" style={{ background: m.color || '#8a6fd1' }} /><b>{m.name}</b></div>
+          <p>{m.description}</p>
+          <div className="meta wrap">{m.tags.join(' · ')}{m.tools.length > 0 && <> · works with {m.tools.join(', ')}</>}</div>
+          {m.team.length > 0 && <div className="meta wrap">👥 comes with its team: {m.team.join(', ')}</div>}
+          <button className={m.installed ? '' : 'primary'} disabled={busy !== null} onClick={async () => {
+            setBusy(m.slug); setError(null)
+            try { const r = await api.installMarket(m.slug); onDone(r.agent.id) } catch (e) { setError(msg(e)) } finally { setBusy(null) }
+          }}>{busy === m.slug ? 'Adding…' : m.installed ? 'Update' : 'Add'}</button>
+        </div>))}
+      </div>
+      <Err error={error} />
+      <p className="hint">Made by the community. <a href="https://github.com/RushabhSingwi/agent-town/blob/main/CONTRIBUTING.md#adding-an-agent-to-the-market"
+        target="_blank" rel="noreferrer">Add yours</a>.</p>
+    </section>
   )
 }

@@ -3,11 +3,21 @@
 A town of AI agents. Sign up, add your agents (markdown files, like Claude Code's
 `.claude/agents/*.md`), connect your MCP servers, and choose what to share with everyone.
 
+- **Agent market.** Ready-made agents in [`agents/`](agents/) (a code reviewer, inbox triage,
+  meeting notes, a chief of staff with a team, and more), one click away under **+ Add agents**.
+  Anyone can add theirs: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-an-agent-to-the-market).
 - **Adding agents.** **+ Add agents** takes a single `.md`, a few files, or a whole folder (a
   `.claude` folder, an agents repo). Agent Town finds the agent definitions (frontmatter with
   `name:`; not skills, commands or memory notes), gives each agent the files its instructions link
-  to, and puts files several agents use (or none links to) into **Shared files**. You see the
+  to, and puts files several agents use (or none links to) into **Shared files**. When a slash
+  command shares an agent's name (`commands/lead.md` next to `agents/lead.md`), you pick which is
+  the agent; the command wins by default when the agent file is only a guard. An agent whose
+  instructions hand work off ("launch…", "delegate…") to other imported agents gets them as its team. You see the
   plan in plain words and confirm. Importing the same folder again updates agents by name.
+- **Teams.** An agent can hand work to your other agents, like Claude Code sub-agents (About →
+  Team). In its sandbox each teammate becomes a sub-agent in `.claude/agents/`, with only its own
+  instructions, files (under `team/<name>/`) and tools, and the lead gets the `Task` tool. Claude
+  models only for now; one level deep. On the map, selecting a lead shows trails to its team.
 - **Shared files (private).** Knowledge all your agents can read, stored once: "about us", a style
   guide. In a run they sit next to the agent's own files, at the same paths.
 - **The map.** A 2D game town on an island, in your choice of three looks (Retro, Blocks,
@@ -111,11 +121,13 @@ backend/app
   manifest.py        what an agent gets at runtime
   importer.py        a dropped folder -> agents, their files, and shared files (pure functions)
   sandbox.py         where a run's box comes from: local subprocess (dev) or Modal
-  routers/files.py   shared files, and import (preview, then import)
+  routers/files.py   shared files, import (preview, then import), and the agent market
+  marketplace.py     reads agents/ (the market) and checks contributions
   routers/runs.py    start/stop a run, chat messages, and the sandbox-facing /api/runtime
   routers/           auth, agents, mcp, public
   main.py            app, CSRF guard, /api/city, serves the built frontend
 backend/runner/runner.py   runs inside the sandbox (stdlib only): setup, then Claude Code or Codex per turn
+agents/              the agent market: one folder per agent (see CONTRIBUTING.md)
 backend/alembic      migrations (uv run alembic revision --autogenerate -m "...")
 backend/dev/demo_mcp_server.py   a hand-written MCP server, so you can see the server side too
 ```
@@ -202,3 +214,7 @@ servers), a warm pool for instant starts, streaming instead of polling, and the 
 Known gaps worth doing before real users: OAuth for remote MCP servers (most hosted ones want
 it, rather than a pasted header), email verification and password reset, rate limits on login,
 and Postgres in CI.
+
+## License
+
+[MIT](LICENSE). Contributions welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -12,7 +12,7 @@ export type AgentSummary = {
 export type Grant = { connection_id: number; tool_name: string | null }
 export type MyAgent = Omit<AgentSummary, 'files'> & {
   files: FileFull[]; grants: Grant[]; share_id: number | null; can_use_public: boolean
-  model_credential_id: number | null; model: string; run_status?: RunStatus | null
+  model_credential_id: number | null; model: string; run_status?: RunStatus | null; team: number[]
 }
 
 export type RunStatus = 'starting' | 'ready' | 'busy' | 'stopped' | 'error'
@@ -54,10 +54,18 @@ export type SharedFile = FileStat & { content?: string }
 
 export type ImportFile = { path: string; content: string }
 export type ImportPlan = {
-  agents: { source: string; name: string; description: string; exists: boolean; files: { source: string; path: string }[] }[]
+  agents: {
+    source: string; name: string; description: string; exists: boolean; files: { source: string; path: string }[]
+    alternatives: { source: string; kind: 'agent' | 'command'; lines: number }[]; team: string[]
+  }[]
   shared: { source: string; path: string }[]
   skipped: { path: string; reason: string }[]
   needs_main: boolean; candidates: string[]
+}
+
+export type MarketAgent = {
+  slug: string; name: string; description: string; tags: string[]; author: string; color: string; building: string
+  tools: string[]; team: string[]; files: number; lines: number; installed: boolean
 }
 
 export type City = { me: User | null; public: Share[]; agents: MyAgent[]; connections: Connection[]; shared_files: SharedFile[] }
@@ -99,6 +107,7 @@ export const api = {
   putFile: (id: number, path: string, content: string) => call<MyAgent>('PUT', `/api/agents/${id}/files`, { path, content }),
   deleteFile: (id: number, fileId: number) => call<MyAgent>('DELETE', `/api/agents/${id}/files/${fileId}`),
   setGrants: (id: number, grants: Grant[]) => call<MyAgent>('PUT', `/api/agents/${id}/grants`, { grants }),
+  setTeam: (id: number, member_ids: number[]) => call<MyAgent>('PUT', `/api/agents/${id}/team`, { member_ids }),
   manifest: (id: number) => call<unknown>('GET', `/api/agents/${id}/manifest`),
 
   addConnection: (body: { name: string; transport: 'http' | 'stdio'; url?: string; command?: string; auth_header?: string }) =>
@@ -118,11 +127,15 @@ export const api = {
   sharedFile: (id: number) => call<SharedFile & { content: string }>('GET', `/api/files/${id}`),
   putSharedFile: (path: string, content: string) => call<SharedFile>('PUT', '/api/files', { path, content }),
   deleteSharedFile: (id: number) => call('DELETE', `/api/files/${id}`),
-  previewImport: (files: ImportFile[], main?: string) => call<ImportPlan>('POST', '/api/import/preview', { files, main }),
-  doImport: (body: { files: ImportFile[]; agents: { source: string; name: string; files: string[] }[]; shared: string[] }) =>
+  previewImport: (files: ImportFile[], main?: string, choices?: Record<string, string>) =>
+    call<ImportPlan>('POST', '/api/import/preview', { files, main, choices }),
+  doImport: (body: { files: ImportFile[]; agents: { source: string; name: string; files: string[]; team: string[] }[]; shared: string[] }) =>
     call<{ created: MyAgent[]; updated: MyAgent[]; shared: number }>('POST', '/api/import', body),
 
   activeRun: (agentId: number) => call<Run | null>('GET', `/api/agents/${agentId}/runs/active`),
+  market: () => call<MarketAgent[]>('GET', '/api/marketplace'),
+  installMarket: (slug: string) => call<{ agent: MyAgent; added: string[] }>('POST', `/api/marketplace/${slug}/install`),
+
   startRun: (agentId: number) => call<Run>('POST', `/api/agents/${agentId}/runs`),
   runEvents: (id: number, after: number) => call<{ run: Run; events: RunEvent[] }>('GET', `/api/runs/${id}/events?after=${after}`),
   sendMessage: (id: number, text: string) => call<RunEvent>('POST', `/api/runs/${id}/messages`, { text }),
