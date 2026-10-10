@@ -1,6 +1,7 @@
 // One of your agents. Walking up to it opens a dialogue (chat.tsx). Everything else lives inside its
 // house: its instructions on the desk, its files on the bookshelf, what it knows about you on the
-// noticeboard, its apps in the stable, its team on the portrait wall, and the rest in a chest.
+// noticeboard, what it remembers in its diary, its apps in the stable, its team on the portrait wall, and
+// the rest in a chest.
 
 import { useEffect, useState } from 'react'
 import { api, type City, type Connection, type Credential, type FileFull, type Grant, type MyAgent, type RunStatus } from './api'
@@ -28,7 +29,7 @@ export function AgentView({ agent, city, floor, reload, onClose, onStatus, onToo
   </>
 }
 
-type Spot = 'desk' | 'books' | 'board' | 'stable' | 'team' | 'chest'
+type Spot = 'desk' | 'books' | 'board' | 'diary' | 'stable' | 'team' | 'chest'
 
 function House({ agent, city, creds, reload, onSetup, onClose, onGone }: {
   agent: MyAgent; city: City; creds: Credential[] | null; reload: Reload; onSetup: () => void; onClose: () => void; onGone: () => void
@@ -38,6 +39,7 @@ function House({ agent, city, creds, reload, onSetup, onClose, onGone }: {
   const [manifest, setManifest] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  const [diary, setDiary] = useState<string | null>(null)   // being edited
 
   const run = async (fn: () => Promise<unknown>) => {
     setError(null)
@@ -69,6 +71,7 @@ function House({ agent, city, creds, reload, onSetup, onClose, onGone }: {
     { key: 'desk', icon: '📜', name: 'Desk', says: 'its instructions' },
     { key: 'books', icon: '📚', name: 'Bookshelf', says: `${books.length + shared.length} book${books.length + shared.length === 1 ? '' : 's'}` },
     { key: 'board', icon: '📌', name: 'Noticeboard', says: about ? 'what it knows about you' : 'nothing about you yet' },
+    { key: 'diary', icon: '📓', name: 'Diary', says: agent.memory.trim() ? 'what it remembers' : 'remembers nothing yet' },
     { key: 'stable', icon: '🐴', name: 'Stable', says: apps.length ? apps.map(a => a.name).join(', ') : 'no apps yet' },
     { key: 'team', icon: '🖼️', name: 'Portraits', says: team.length ? `its team of ${team.length}` : 'works alone' },
     { key: 'chest', icon: '🧰', name: 'Chest', says: 'its brain and settings' },
@@ -110,6 +113,26 @@ function House({ agent, city, creds, reload, onSetup, onClose, onGone }: {
         <h3>Noticeboard: about you</h3>
         {about ? <div className="pinned"><Md text={about.content} /></div> : <p className="empty">{agent.name} doesn't know anything about you yet.</p>}
         <button className="primary" onClick={onSetup}>{about ? 'Change what it knows' : 'Tell it about you'}</button>
+      </section>}
+
+      {spot === 'diary' && <section className="spot">
+        <h3>Diary: what it remembers</h3>
+        <p className="hint">{agent.name} keeps these notes between chats, and also reads what was said in its last few chats.
+          Change anything that's wrong; it takes effect next chat.</p>
+        {diary !== null ? <>
+          <textarea className="editor" value={diary} onChange={e => setDiary(e.target.value)} rows={14} maxLength={20000} />
+          <div className="row"><button className="primary" onClick={() => run(async () => { await api.updateAgent(agent.id, { memory: diary }); setDiary(null) })}>Save</button>
+            <button onClick={() => setDiary(null)}>Cancel</button></div>
+        </> : <>
+          {agent.memory.trim() ? <div className="pinned"><Md text={agent.memory} /></div>
+            : <p className="empty">Nothing yet. As you chat, {agent.name} writes down what's worth remembering.</p>}
+          <div className="row">
+            <button onClick={() => setDiary(agent.memory)}>{agent.memory.trim() ? 'Edit' : 'Write something'}</button>
+            {agent.memory.trim() && <button className="danger" onClick={() => {
+              if (confirm(`Make ${agent.name} forget everything in its diary?`)) run(() => api.updateAgent(agent.id, { memory: '' }))
+            }}>Forget everything</button>}
+          </div>
+        </>}
       </section>}
 
       {spot === 'stable' && <section className="spot">

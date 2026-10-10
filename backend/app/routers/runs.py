@@ -9,6 +9,7 @@ inbox for the owner's messages and posts back what the agent says and does. So i
 public address, and the same code works on any provider.
 """
 
+import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -26,6 +27,7 @@ from ..config import settings
 from ..db import get_db
 from ..manifest import build_manifest
 from ..models import McpConnection, ModelCredential, Run, RunEvent, User
+from ..schemas import MAX_MEMORY
 from ..security import RUN_TOKEN_PREFIX, decrypt, hash_token, new_run_token
 from .agents import own_agent
 
@@ -273,7 +275,8 @@ def runtime_inbox(after: int = 0, r: Run = Depends(current_run), db: Session = D
     rows = db.scalars(select(RunEvent).where(RunEvent.run_id == r.id, RunEvent.kind == "user", RunEvent.id > after)
                       .order_by(RunEvent.id))
     return {"messages": [{"id": e.id, "text": e.data.get("text", "")} for e in rows],
-            "idle_seconds": int((now - _utc(r.last_active_at)).total_seconds())}
+            "idle_seconds": int((now - _utc(r.last_active_at)).total_seconds()),
+            "memory": memory_tag(r.agent.memory)}   # changed: the owner edited its notes mid-chat
 
 
 class EventIn(BaseModel):
@@ -309,3 +312,29 @@ def runtime_events(body: EventsIn, r: Run = Depends(current_run), db: Session = 
         db.add(RunEvent(run_id=r.id, kind=ev.kind, data=ev.data))
     db.commit()
     return {"ok": True}
+
+
+def memory_tag(text: str) -> str:
+    """A fingerprint of its notes, so the sandbox can tell they changed without fetching them every second."""
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+class MemoryIn(BaseModel):
+    content: str = Field(max_length=MAX_MEMORY)
+    base: str = Field(max_length=64, description="memory_tag of the notes this edit started from")
+
+
+@router.get("/api/runtime/memory", tags=["runtime"])
+def runtime_get_memory(r: Run = Depends(current_run)):
+    return {"content": r.agent.memory, "tag": memory_tag(r.agent.memory)}
+
+
+@router.put("/api/runtime/memory", tags=["runtime"])
+def runtime_memory(body: MemoryIn, r: Run = Depends(current_run), db: Session = Depends(get_db)):
+    """The agent edited memory.md: keep it for its next chat. Only its own agent's memory, by its token.
+    If the owner changed the notes since the agent last had them, the owner's version wins."""
+    if body.base != memory_tag(r.agent.memory):
+        raise HTTPException(409, "The owner changed these notes during the chat")
+    r.agent.memory = body.content
+    db.commit()
+    return {"ok": True, "tag": memory_tag(body.content)}

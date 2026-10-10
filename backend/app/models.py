@@ -108,6 +108,9 @@ class Agent(Base):
     thinking: Mapped[str] = mapped_column(String(10), default="")
     # What its building looks like on the map: studio, forge, library… ("" = picked from its description)
     building: Mapped[str] = mapped_column(String(20), default="")
+    # What it remembers between chats: memory.md in its sandbox, saved back as it changes. Private to the
+    # owner: never part of a share, an export or a teammate's files.
+    memory: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 

@@ -304,3 +304,149 @@ def test_runner_passes_model_and_effort_to_the_clis(tmp_path, monkeypatch):
     assert claude[claude.index("--model") + 1] == "claude-opus-5-5" and claude[claude.index("--effort") + 1] == "xhigh"
     assert "--model" not in plain and "--effort" not in plain
     assert 'model_reasoning_effort="xhigh"' in codex                                   # Codex has no "max"
+
+
+def test_agent_remembers_between_chats(make_user, client, fake_sandbox):
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    first = alice.post(f"/api/agents/{a['id']}/runs").json()["id"]
+    sb = box(client, fake_sandbox.started[0][1])
+    alice.post(f"/api/runs/{first}/messages", json={"text": "I'm vegetarian, plan dinner"})
+    sb.post("/api/runtime/events", json={"events": [
+        {"kind": "tool", "data": {"name": "Read", "input": "notes.md"}},
+        {"kind": "text", "data": {"text": "Lentil curry it is."}}]})
+    empty = sb.get("/api/runtime/memory").json()["tag"]
+    assert sb.put("/api/runtime/memory", json={"content": "- vegetarian\n", "base": empty}).status_code == 200
+    assert sb.put("/api/runtime/memory", json={"content": "x" * 20_001, "base": empty}).status_code == 422
+    alice.delete(f"/api/runs/{first}")
+
+    alice.post(f"/api/agents/{a['id']}/runs")
+    m = box(client, fake_sandbox.started[1][1]).get("/api/runtime/setup").json()["manifest"]
+    assert m["memory"] == "- vegetarian\n"
+    [chat] = m["recent_chats"]                                       # words only, not its tool calls
+    assert [(x["who"], x["text"]) for x in chat["messages"]] == [
+        ("owner", "I'm vegetarian, plan dinner"), ("agent", "Lentil curry it is.")]
+    old = {"Authorization": f"Bearer {fake_sandbox.started[0][1]}"}
+    assert client.put("/api/runtime/memory", json={"content": "x", "base": empty}, headers=old).status_code == 401   # an ended run's token
+
+    client.headers.pop("Authorization", None)
+    assert alice.get(f"/api/agents/{a['id']}").json()["memory"] == "- vegetarian\n"
+    assert alice.patch(f"/api/agents/{a['id']}", json={"memory": ""}).json()["memory"] == ""   # the owner can make it forget
+
+
+def test_owners_edit_mid_chat_wins(make_user, client, fake_sandbox):
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    alice.post(f"/api/agents/{a['id']}/runs")
+    sb = box(client, fake_sandbox.started[0][1])
+    start = sb.get("/api/runtime/inbox").json()["memory"]
+    assert start == sb.get("/api/runtime/memory").json()["tag"]
+
+    client.headers.pop("Authorization", None)
+    alice.patch(f"/api/agents/{a['id']}", json={"memory": "- call me Al\n"})          # the owner, from the Diary
+    sb = box(client, fake_sandbox.started[0][1])
+    assert sb.get("/api/runtime/inbox").json()["memory"] != start                        # the sandbox can tell
+    r = sb.put("/api/runtime/memory", json={"content": "- agent's older edit\n", "base": start})
+    assert r.status_code == 409
+    assert sb.get("/api/runtime/memory").json()["content"] == "- call me Al\n"
+
+
+def test_agent_files_cant_clash_with_memory(make_user):
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    for path in (".agent-town/memory.md", ".agent-town/recent-chats.md"):
+        assert alice.put(f"/api/agents/{a['id']}/files", json={"path": path, "content": "x"}).status_code == 422
+        assert alice.put("/api/files", json={"path": path, "content": "x"}).status_code == 422
+
+
+def test_memory_stays_private(make_user, client, fake_sandbox):
+    alice = make_user("alice")
+    a = setup_agent(alice)
+    alice.patch(f"/api/agents/{a['id']}", json={"memory": "- lives at 1 Example St\n"})
+    alice.post("/api/public", json={"kind": "agent", "agent_id": a["id"]})
+    bob = make_user("bob")
+    assert "memory" not in bob.get(f"/api/agents/{a['id']}").json()
+    assert "Example St" not in str(bob.get("/api/city").json())
+
+
+def test_recent_chats_fit_a_budget(make_user, db_session):
+    from datetime import datetime, timedelta, timezone
+    from app.manifest import RECENT_SAID, recent_chats
+    from app.models import Agent, Run, RunEvent
+    alice = make_user("alice")
+    agent_id = setup_agent(alice)["id"]
+    t0 = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    with db_session() as s:
+        a = s.get(Agent, agent_id)
+        for i in range(8):
+            r = Run(agent_id=a.id, owner_id=a.owner_id, provider="fake", token_hash=f"h{i}",
+                    created_at=t0 + timedelta(days=i), ended_at=t0 + timedelta(days=i, hours=1))
+            s.add(r)
+            s.flush()
+            for j in range(10):
+                s.add(RunEvent(run_id=r.id, kind="user", data={"text": f"chat {i} message {j} " + "x" * 3_000}))
+        s.add(Run(agent_id=a.id, owner_id=a.owner_id, provider="fake", token_hash="open"))   # still running: not shown
+        s.commit()
+        chats = recent_chats(s, a)
+    assert chats[0]["messages"][0]["text"].startswith("chat 7 message 0")                     # newest first
+    assert all(len(x["text"]) <= RECENT_SAID + 2 for c in chats for x in c["messages"])
+    assert sum(len(x["text"]) for c in chats for x in c["messages"]) <= 30_000
+    assert chats[-1]["cut"] and chats[-1]["messages"][-1]["text"].startswith(f"chat {8 - len(chats)} message 9")
+
+
+def test_runner_keeps_memory_in_step(tmp_path, monkeypatch):
+    import importlib
+    import io
+    import sys
+    import urllib.error
+    monkeypatch.setenv("AGENTTOWN_API_URL", "http://x")
+    monkeypatch.setenv("AGENTTOWN_RUN_TOKEN", "rt_x")
+    monkeypatch.syspath_prepend(str(__import__("pathlib").Path(__file__).parents[1] / "runner"))
+    sys.modules.pop("runner", None)
+    runner = importlib.import_module("runner")
+    monkeypatch.setattr(runner, "WORK", tmp_path)
+    server = {"memory": "- likes tea\n"}
+    calls = []
+
+    def api(method, path, body=None):
+        calls.append((method, body))
+        if method == "GET":
+            return {"content": server["memory"]}
+        if body["base"] != runner.tag(server["memory"]):
+            raise urllib.error.HTTPError("http://x", 409, "conflict", {}, io.BytesIO())
+        server["memory"] = body["content"]
+        return {}
+    monkeypatch.setattr(runner, "api", api)
+
+    m = {"agent": {"name": "A"}, "instructions": "hi", "public": [], "team": [],
+         "recent_chats": [{"started_at": "2026-10-09T14:02:00+00:00", "cut": True,
+                           "messages": [{"who": "owner", "text": "hello"}, {"who": "agent", "text": "hi there"}]}]}
+    runner.write_recent(m)
+    chats = (tmp_path / ".agent-town/recent-chats.md").read_text()
+    assert "## 2026-10-09 14:02 UTC" in chats and "**They:** hello" in chats and "**You:** hi there" in chats
+    assert ".agent-town/memory.md" in runner.system_prompt(m, []) and ".agent-town/recent-chats.md" in runner.system_prompt(m, [])
+
+    mem = runner.Memory(server["memory"])
+    notes = tmp_path / ".agent-town/memory.md"
+    assert notes.read_text() == "- likes tea\n"
+    mem.save()
+    assert calls == []                                                        # unchanged: nothing sent
+    notes.write_text("- likes green tea\n")                                   # the agent edits its notes
+    mem.save()
+    assert server["memory"] == "- likes green tea\n"
+    mem.check(runner.tag(server["memory"]))
+    assert mem.tell("hi") == "hi"                                             # in step: nothing to say
+
+    server["memory"] = "- call me Al\n"                                       # the owner edits between turns
+    mem.check(runner.tag(server["memory"]))
+    assert notes.read_text() == "- call me Al\n" and "edited" in mem.tell("hi") and mem.tell("hi") == "hi"
+
+    notes.write_text("- agent's edit\n")                                      # both edit during one turn
+    server["memory"] = "- owner's edit\n"
+    mem.save()
+    assert server["memory"] == "- owner's edit\n" and notes.read_text() == "- owner's edit\n"
+    assert "weren't kept" in mem.tell("next")
+
+    notes.unlink()
+    mem.save()
+    assert server["memory"] == "- owner's edit\n"                              # deleted: keep what was saved

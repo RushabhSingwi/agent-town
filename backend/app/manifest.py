@@ -11,13 +11,16 @@ from sqlalchemy.orm import Session
 
 from . import views
 from .config import settings
-from .models import DEFINITION, Agent, McpConnection, ModelCredential, PublicShare, SharedFile
+from .models import DEFINITION, Agent, McpConnection, ModelCredential, PublicShare, Run, RunEvent, SharedFile
 
 
 DEFAULT_MODEL = {"anthropic": "claude-sonnet-5-5", "openai": ""}  # "": the provider's CLI default
 # Thinking effort, from quick to thorough. Claude Code takes these as --effort; Codex has no "max",
 # so the runner caps it at "xhigh" there.
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
+RECENT_CHATS = 5            # how many past chats it is shown, newest first
+RECENT_CHARS = 30_000       # and at most this much of them; one long chat shouldn't crowd out the rest
+RECENT_SAID = 2_000         # of any single message
 
 
 def credential_for(db: Session, a: Agent) -> ModelCredential | None:
@@ -49,6 +52,33 @@ def granted_tools(a: Agent) -> list[dict]:
             "all_tools": g.tool_name is None,
         })
     return tools
+
+
+def recent_chats(db: Session, a: Agent) -> list[dict]:
+    """Its last few finished chats, words only (what was asked and what it answered, not its tool
+    calls), so a new chat can pick up where the last one left off. Newest first, within a budget."""
+    out, left = [], RECENT_CHARS
+    runs = db.scalars(select(Run).where(Run.agent_id == a.id, Run.ended_at.is_not(None))
+                      .order_by(Run.created_at.desc(), Run.id.desc()).limit(RECENT_CHATS))
+    for r in runs:
+        said = []
+        for e in db.scalars(select(RunEvent).where(RunEvent.run_id == r.id, RunEvent.kind.in_(("user", "text")))
+                            .order_by(RunEvent.id)):
+            text = str(e.data.get("text", "")).strip()
+            if text:
+                said.append({"who": "owner" if e.kind == "user" else "agent",
+                             "text": text if len(text) <= RECENT_SAID else text[:RECENT_SAID] + " …"})
+        kept = []
+        for x in reversed(said):            # a chat that doesn't fit keeps its latest words
+            if len(x["text"]) > left:
+                break
+            kept.insert(0, x)
+            left -= len(x["text"])
+        if kept:
+            out.append({"started_at": r.created_at.isoformat(), "messages": kept, "cut": len(kept) < len(said)})
+        if len(kept) < len(said):
+            break                           # the budget is spent: older chats are left out
+    return out
 
 
 def build_manifest(db: Session, a: Agent) -> dict:
@@ -91,5 +121,8 @@ def build_manifest(db: Session, a: Agent) -> dict:
             select(SharedFile).where(SharedFile.owner_id == a.owner_id).order_by(SharedFile.path))],
         "tools": tools,
         "team": team,
+        # what it remembers: its own notes (memory.md, saved back as it edits them) and its last chats
+        "memory": a.memory,
+        "recent_chats": recent_chats(db, a),
         "public": public,
     }
