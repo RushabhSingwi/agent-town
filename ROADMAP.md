@@ -11,9 +11,9 @@ should remember, work on a schedule, and show their work for approval.
 - [ ] **Make an agent by describing it.** "I want something that preps me for every meeting." A
       builder asks 3–4 questions, writes the `AGENT.md`, picks its building and apps, and a new
       character moves into town. Nobody should have to write markdown.
-- [ ] **Memory and saved work.** Each agent gets a notebook of facts it learns that persists across
-      chats (visible and editable), and a "Saved" shelf for what it produces: drafts, briefs, notes.
-      Today anything an agent writes is gone when the chat ends.
+- [ ] **Saved work.** A "Saved" shelf for what an agent produces: drafts, briefs, notes. Memory is
+      done (its own notes, plus its last few chats); other files it writes are still gone when
+      the chat ends.
 - [ ] **Ask before acting: an approvals inbox.** A mailbox in the town square where agents leave
       requests ("Send this reply to Sam?": Approve / Edit / Reject). This makes sending email, calendar
       invites and Slack messages safe.

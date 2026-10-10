@@ -8,12 +8,15 @@
      openai    -> Codex (`codex exec`), api key or ChatGPT auth.json
 3. loop: GET /api/runtime/inbox for the owner's messages; for each one run a turn of the CLI,
    resuming the same conversation, and POST /api/runtime/events with what the agent says and does
-4. exit when the owner has been quiet for AGENTTOWN_IDLE_MINUTES, or the API says the run ended
+4. after each turn, if the agent changed its notes, PUT /api/runtime/memory so its next chat has them;
+   between turns, pick up the owner's edits to them (the inbox says when they changed)
+5. exit when the owner has been quiet for AGENTTOWN_IDLE_MINUTES, or the API says the run ended
 
 Each turn is a fresh CLI process that resumes the conversation by id: simple, and a crash in
 one turn can't wedge the next.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -33,6 +36,8 @@ ROOT = Path.cwd()
 WORK = ROOT / "work"          # the agent's working directory: its files, and public/ items
 HOME = Path(os.environ.get("HOME", ROOT / "home"))
 CLIP = 4000                   # how much of a tool's output goes back to the UI
+# What it remembers. Agent file paths can't start with ".", so nothing it was given can clash with these.
+MEMORY, RECENT = ".agent-town/memory.md", ".agent-town/recent-chats.md"
 
 
 class Ended(Exception):
@@ -104,6 +109,78 @@ def write_team(m: dict) -> list[dict]:
     return out
 
 
+def write_recent(m: dict) -> None:
+    """Its last few chats, words only, newest first."""
+    chats = m.get("recent_chats") or []
+    if not chats:
+        return
+    out = ["# Your recent chats", "", "Newest first: what was said, not what you did. Read-only; keep anything"
+           f" worth remembering in {MEMORY}.", ""]
+    for c in chats:
+        out += [f"## {c['started_at'][:16].replace('T', ' ')} UTC", ""]
+        if c.get("cut"):
+            out += ["(earlier messages in this chat left out)", ""]
+        out += [f"**{'They' if x['who'] == 'owner' else 'You'}:** {x['text']}\n" for x in c["messages"]]
+    (WORK / RECENT).parent.mkdir(parents=True, exist_ok=True)
+    (WORK / RECENT).write_text("\n".join(out))
+
+
+def tag(text: str) -> str:
+    """The same fingerprint the API uses (routers/runs.py memory_tag)."""
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+class Memory:
+    """Its notes file, kept in step with the server. The owner may edit the notes mid-chat (the
+    Diary): between turns that edit is copied in, and a save that started from older notes is
+    refused, so the owner's version always wins and the agent is told to look again."""
+
+    def __init__(self, notes: str):
+        self.file = WORK / MEMORY
+        self.file.parent.mkdir(parents=True, exist_ok=True)
+        self.note = ""                  # said to the agent with the next message, then cleared
+        self._take(notes)
+
+    def _take(self, notes: str) -> None:
+        self.saved = notes
+        self.file.write_text(notes)
+
+    def _reload(self, why: str) -> None:
+        self._take(api("GET", "/api/runtime/memory")["content"])
+        self.note = why
+
+    def check(self, server_tag: str | None) -> None:
+        """Between turns: did the owner change the notes?"""
+        if server_tag and server_tag != tag(self.saved):
+            self._reload(f"(The person you work for edited {MEMORY} since you last read it. Read it again before relying on it.)")
+
+    def save(self) -> None:
+        """After a turn: send the notes back if the agent changed them."""
+        try:
+            notes = self.file.read_text()
+        except (OSError, UnicodeDecodeError):
+            return              # deleted or garbled: keep what was saved rather than wipe it
+        if notes == self.saved:
+            return
+        try:
+            api("PUT", "/api/runtime/memory", {"content": notes, "base": tag(self.saved)})
+        except urllib.error.HTTPError as e:
+            if e.code == 409:
+                self._reload(f"(The person you work for edited {MEMORY} while you were working, so the changes you"
+                             " made to it weren't kept. Read it again and redo any that still matter.)")
+                return
+            if e.code != 422:
+                raise
+            emit("error", detail=f"{MEMORY} is over 20,000 characters, so this version wasn't kept. Ask it to shorten its notes.")
+            return
+        self.saved = notes
+
+    def tell(self, text: str) -> str:
+        """The owner's message, with anything the agent should know about its notes first."""
+        note, self.note = self.note, ""
+        return f"{note}\n\n{text}" if note else text
+
+
 def system_prompt(m: dict, files: list[str]) -> str:
     """The agent's own instructions, plus where its files are. Instructions written for another
     setup may link `../../content/a.md`; the list lets it find content/a.md here."""
@@ -120,6 +197,13 @@ def system_prompt(m: dict, files: list[str]) -> str:
     if m.get("team"):
         extra += ("\n\nYour team (hand work to them with the Task tool; each has its own files and tools):\n"
                   + "\n".join(f"- {t['slug']}: {t['description'] or t['name']}" for t in m["team"]))
+    extra += (f"\n\nYou don't remember past chats on your own, so you have two files for it. Read both before you"
+              f" start.\n- {MEMORY}: your notes, kept between chats (only this file is kept). When you learn"
+              " something worth knowing next time (their preferences, decisions made, work still open, what to"
+              " follow up on), update it before you answer. Keep it short and current: rewrite it rather than"
+              " append, under 20,000 characters, and never put passwords or keys in it.")
+    if m.get("recent_chats"):
+        extra += f"\n- {RECENT}: what was said in your last few chats, newest first."
     return m["instructions"] + extra
 
 
@@ -336,6 +420,8 @@ def main() -> None:
     HOME.mkdir(parents=True, exist_ok=True)
     files = write_files(m)
     team = write_team(m)
+    write_recent(m)
+    memory = Memory(m.get("memory") or "")
     if cred["provider"] == "anthropic":
         engine = Claude(m, cred, setup["auth_headers"], files, team)
     else:
@@ -346,16 +432,18 @@ def main() -> None:
     cursor, last_turn = 0, time.monotonic()
     while True:
         box = api("GET", f"/api/runtime/inbox?after={cursor}")
+        memory.check(box.get("memory"))
         for msg in box["messages"]:
             cursor = msg["id"]
             emit("status", status="busy")
             try:
-                engine.turn(msg["text"])
+                engine.turn(memory.tell(msg["text"]))
             except Ended:
                 raise
             except Exception as e:  # noqa: BLE001  (one bad turn shouldn't end the run)
                 emit("error", detail=f"{type(e).__name__}: {e}")
                 emit("done", ok=False)
+            memory.save()
             emit("status", status="ready")
             last_turn = time.monotonic()
         if not box["messages"]:

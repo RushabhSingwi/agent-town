@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 Slug = Field(pattern=r"^[a-z0-9][a-z0-9_-]{2,29}$")
 Color = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 MAX_FILE = 200_000
+MAX_MEMORY = 20_000
 
 
 class SignupIn(BaseModel):
@@ -41,6 +42,7 @@ class AgentPatch(BaseModel):
     model: str | None = Field(default=None, max_length=100, pattern=r"^[A-Za-z0-9._:/@-]*$")
     thinking: Literal["", "low", "medium", "high", "xhigh", "max"] | None = None
     building: Literal["", "studio", "office", "forge", "library", "lab", "observatory", "tavern", "cottage", "tower"] | None = None
+    memory: str | None = Field(default=None, max_length=MAX_MEMORY)
 
 
 class GrantIn(BaseModel):

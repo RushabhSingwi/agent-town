@@ -28,6 +28,7 @@ also open-source software that anyone can run themselves: if you use a copy run 
 | **App connections** (for example a GitHub token, or an app's server address) and their credentials | So agents you allow can use those apps | Credentials encrypted; never returned by the API |
 | **Your agents**: their instructions, files, "about you" answers, team and settings; your shared files | That's what an agent is | As you wrote them |
 | **Chats with your agents**: your messages, the agent's replies, and the tool calls and results it made | To show you the conversation, and to continue it | As text, until you delete the agent |
+| **What your agents remember**: the notes each one keeps between chats | So an agent can pick up where you left off; you can read, edit or wipe them in its house | As text, until you wipe them or delete the agent; never shared |
 | **What you share publicly**: agents or files, a note, your username | So others can see what you chose to share | As text, visible to everyone |
 | **Technical logs**: IP address, time, request path, errors | To keep the service running and secure | In our hosting provider's logs, kept for a limited time |
 
@@ -43,7 +44,8 @@ We use a few providers to run the service. Each only gets what it needs:
 
 - **Render** hosts the app and its database, in the United States.
 - **Modal** runs each agent's sandbox while you chat with it. For that run only, the sandbox gets
-  the agent's instructions and files, your "about you" answers, the agent's team, and the
+  the agent's instructions and files, your "about you" answers, its notes and what was said in
+  its last few chats, the agent's team, and the
   credentials it needs (your AI key or token, and tokens for the apps you allowed). The sandbox is
   thrown away when the chat ends.
 - **Anthropic or OpenAI**, whichever you choose: your agent sends your messages, its instructions

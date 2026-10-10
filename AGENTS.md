@@ -71,9 +71,19 @@ Knowing this lets you write instructions that work:
     its own team).
 - **Each chat is one run.** The conversation continues across messages until the chat ends: when the
   owner ends it, after 15 minutes of silence, or after 4 hours at most.
-- **Nothing it writes is kept** after the chat ends. Its files, shared files and `about-me.md` are
-  written fresh into each run. Durable knowledge belongs in its files, not in "remember this"
-  instructions.
+- **It remembers through two files** in `.agent-town/`, both described in its prompt (no agent file
+  can clash with them, since file paths can't start with `.`):
+  - **`.agent-town/memory.md`**: its own notes. Whatever it writes there is saved after each turn and
+    handed to its next chat (20,000 characters at most). Its owner can read, edit or wipe it (the
+    Diary in its house), even mid-chat: the owner's edit wins, and the agent is told to re-read it.
+    It is never shared.
+  - **`.agent-town/recent-chats.md`**: what was said in its last few chats (words only, newest
+    first). Read-only.
+
+  Agent Town tells every agent this already, so you don't need to. If your agent has things it
+  should always note down (a client's preferences, open tasks), say so.
+- **Nothing else it writes is kept** after the chat ends. Its files, shared files and `about-me.md`
+  are written fresh into each run. Reference knowledge belongs in its files.
 
 ### What it supports
 
@@ -81,7 +91,8 @@ Knowing this lets you write instructions that work:
 |---|---|
 | Chat-driven work: someone asks, it works, it answers | Scheduled or background jobs ("every morning…") |
 | Drafting, reviewing, summarizing, planning, research, analysis | Reacting to events (new email, a webhook) |
-| Using files it was given: playbooks, FAQs, checklists, examples | Remembering previous chats, or saving files between chats |
+| Using files it was given: playbooks, FAQs, checklists, examples | Saving files between chats (other than its notes) |
+| Remembering: its own notes, and its last few chats | Searching all of its past chats |
 | Apps its owner connected and allowed (MCP over HTTP, or a command run in the sandbox) | Notion, Slack, Linear sign-in (coming); browsers or desktop apps |
 | Gmail (search, read, **draft** — never send) and Google Calendar (list, add events, no invites), on servers with a Google client | Sending email or calendar invitations on its own |
 | A team: a lead handing work to other agents (Claude) | Teams more than one level deep; teams on Codex |
