@@ -10,6 +10,8 @@
 #   make restore FILE=backups/<file>.sql   load a backup (replaces what's there now)
 #   make destroy   delete everything, data included (asks first)
 #
+#   make dev       development instead: API + website with live reload, data in backend/agenttown.db
+#
 # Your secrets live in .env.local (git-ignored), made by the first `make up`. Keep
 # AGENTTOWN_SECRET_KEY: it encrypts the AI accounts and app sign-ins people save.
 
@@ -23,11 +25,11 @@ PORT := $(or $(AGENTTOWN_PORT),8000)
 COMPOSE := AGENTTOWN_ENV_FILE=$(ENV) docker compose --env-file $(ENV)
 LAN_IP := $(shell ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
 
-.PHONY: help env up start stop status logs share backup restore destroy
+.PHONY: help env up start stop status logs share backup restore destroy dev
 .DEFAULT_GOAL := help
 
 help:
-	@sed -n '3,12p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '3,14p' Makefile | sed 's/^# \{0,1\}//'
 
 # Made once, never overwritten: a new key and database password, plus your Google sign-in keys
 # from development if backend/.env has them (copied, never printed).
@@ -88,3 +90,13 @@ restore:
 destroy:
 	@read -r -p "Delete your local town AND all its data? Type 'delete' to confirm: " ok; \
 	  [ "$$ok" = delete ] && $(COMPOSE) down -v && echo "Deleted. ($(ENV) and backups/ are still here.)"
+
+# Development: the API (uvicorn, port 8000) and the website (Vite) together, both reloading on
+# save. Ctrl-C stops both. Uses backend/.env, not $(ENV), so it can't run alongside `make up`.
+dev:
+	@if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then echo "Port 8000 is busy (is the Docker town on? make stop)"; exit 1; fi
+	@[ -d frontend/node_modules ] || (cd frontend && npm install)
+	@trap 'kill 0' INT TERM EXIT; \
+	  (cd backend && uv run --group modal python -m uvicorn app.main:app --reload --port 8000) & \
+	  (cd frontend && npm run dev) & \
+	  wait
